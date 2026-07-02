@@ -14,7 +14,6 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -23,25 +22,25 @@ public class PluginApiControllerTest {
 
     @Test
     public void shouldReportStartedWhenRuntimeIsOnDemand() {
-        Map<String, Object> response = PluginApiController.statusResponse(true, false, Arrays.asList("comment"));
+        PluginApiModels.StatusResponse response = PluginApiController.statusResponse(true, false, Arrays.asList("comment"));
 
-        assertEquals(0, response.get("code"));
-        assertEquals("STARTED", response.get("status"));
-        assertEquals(Arrays.asList("comment"), response.get("runningPlugins"));
+        assertEquals(Integer.valueOf(0), response.getCode());
+        assertEquals("STARTED", response.getStatus());
+        assertEquals(Arrays.asList("comment"), response.getRunningPlugins());
     }
 
     @Test
     public void shouldReportStartedWhenAllPluginsAreRunningWithoutOnDemand() {
-        Map<String, Object> response = PluginApiController.statusResponse(false, true, Arrays.asList("comment", "oss"));
+        PluginApiModels.StatusResponse response = PluginApiController.statusResponse(false, true, Arrays.asList("comment", "oss"));
 
-        assertEquals("STARTED", response.get("status"));
+        assertEquals("STARTED", response.getStatus());
     }
 
     @Test
     public void shouldReportStartingWhenWaitingForPluginsWithoutOnDemand() {
-        Map<String, Object> response = PluginApiController.statusResponse(false, false, Arrays.asList("comment"));
+        PluginApiModels.StatusResponse response = PluginApiController.statusResponse(false, false, Arrays.asList("comment"));
 
-        assertEquals("STARTING", response.get("status"));
+        assertEquals("STARTING", response.getStatus());
     }
 
     @Test
@@ -69,11 +68,11 @@ public class PluginApiControllerTest {
             pluginVO.setPlugin(plugin);
             pluginCore.getPluginInfoMap().put("comment", pluginVO);
 
-            List<?> plugins = PluginApiController.pluginsForCurrentMode(pluginCore);
+            List<Plugin> plugins = PluginApiController.pluginsForCurrentMode(pluginCore);
 
             assertEquals(1, plugins.size());
-            assertEquals("comment", ((Plugin) plugins.get(0)).getShortName());
-            assertEquals("", ((Plugin) plugins.get(0)).getPreviewImageBase64());
+            assertEquals("comment", plugins.get(0).getShortName());
+            assertEquals("", plugins.get(0).getPreviewImageBase64());
         } finally {
             RunConstants.runType = previous;
         }

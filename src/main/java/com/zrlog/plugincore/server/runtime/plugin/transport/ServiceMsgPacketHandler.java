@@ -22,7 +22,6 @@ import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStates;
 import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -95,12 +94,16 @@ public class ServiceMsgPacketHandler {
 
     public void doHandle(final MsgPacket msgPacket) {
         try (PluginLogContext.Scope sourceScope = PluginLogContext.open(session)) {
-            Map<String, Object> map = new Gson().fromJson(msgPacket.getDataStr(), Map.class);
-            if (map == null || map.get("name") == null) {
-                session.sendJsonMsg(errorResponse("Service name is required"), msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+            Gson gson = new Gson();
+            PluginTransportModels.ServiceRequest request =
+                    gson.fromJson(msgPacket.getDataStr(), PluginTransportModels.ServiceRequest.class);
+            Map<String, Object> map = gson.fromJson(msgPacket.getDataStr(), Map.class);
+            if (request == null || request.getName() == null) {
+                session.sendJsonMsg(PluginTransportModels.ServiceErrorResponse.error("Service name is required"),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
                 return;
             }
-            String name = map.get("name").toString();
+            String name = request.getName();
             PluginRuntimeStateService stateService = null;
             String targetPluginId = null;
             String targetPluginName = null;
@@ -157,7 +160,8 @@ public class ServiceMsgPacketHandler {
                     }
                 }
                 // not found service response error
-                session.sendJsonMsg(errorResponse(e.getMessage()), msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                session.sendJsonMsg(PluginTransportModels.ServiceErrorResponse.error(e.getMessage()),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
             }
         }
     }
@@ -185,13 +189,6 @@ public class ServiceMsgPacketHandler {
                 .findFirst()
                 .orElse(null);
         return provider == null || isBlank(provider.getKey()) ? serviceName : provider.getKey();
-    }
-
-    private Map<String, Object> errorResponse(String message) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("code", 1);
-        response.put("message", message);
-        return response;
     }
 
     private static PluginRuntimeStateService runtimeStateService(PluginCore pluginCore) {

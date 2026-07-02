@@ -30,7 +30,6 @@ import org.jsoup.nodes.Element;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -49,8 +48,8 @@ public class PluginController extends Controller {
         Document document = Jsoup.parse(Objects.requireNonNull(PluginController.class.getResourceAsStream("/static/index.html")), "UTF-8", "");
         document.title("插件管理");
         document.body().removeAttr("class");
-        Map<String, Object> pluginData = new PluginApiController(request, response).plugins();
-        if (Boolean.TRUE.equals(pluginData.get("dark"))) {
+        PluginApiModels.PluginListResponse pluginData = new PluginApiController(request, response).plugins();
+        if (Boolean.TRUE.equals(pluginData.getDark())) {
             document.body().addClass("dark");
         } else {
             document.body().addClass("light");
@@ -162,12 +161,6 @@ public class PluginController extends Controller {
     }
 
     public void upload() {
-        /*Map<String, Object> map = new HashMap<>();
-        File file = getRequest().getFile("file");
-        String finalFile = PathUtil.getStaticPath() + file.getName() + "." + getRequest().getParaToStr("ext");
-        FileUtils.moveOrCopyFile(file.toString(), finalFile, true);
-        map.put("url", getBasePath() + "/" + new File(finalFile).getName());
-        response.renderJson(map);*/
-        response.renderJson(new HashMap<>());
+        response.renderJson(new PluginApiModels.EmptyResponse());
     }
 }

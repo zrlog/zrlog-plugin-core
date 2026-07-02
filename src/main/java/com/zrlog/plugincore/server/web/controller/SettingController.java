@@ -7,8 +7,6 @@ import com.zrlog.plugincore.server.vo.PluginCoreSetting;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
 
 public class SettingController extends Controller {
 
@@ -18,12 +16,9 @@ public class SettingController extends Controller {
     }
 
     @ResponseBody
-    public Map<String, Object> update() throws SQLException {
-        Map<String, Object> map = new HashMap<>();
+    public PluginApiModels.ActionResponse update() throws SQLException {
         PluginCoreDAO.getInstance().update(pluginCore -> pluginCore.getSetting().setDisableAutoDownloadLostFile(request.getParaToBool(
                 "disableAutoDownloadLostFile")));
-        map.put("code", 0);
-        map.put("message", "成功");
-        return map;
+        return PluginApiModels.ActionResponse.success("成功");
     }
 }

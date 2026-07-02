@@ -16,6 +16,7 @@ import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
 import com.zrlog.plugin.message.CapabilityInvokeRequest;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
+import com.zrlog.plugin.message.DbPropertiesResponse;
 import com.zrlog.plugin.message.NotificationRequest;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -44,7 +45,11 @@ import com.zrlog.plugincore.server.runtime.scheduler.SchedulerTickResult;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerUpdateService;
 import com.zrlog.plugincore.server.runtime.service.ServiceSetting;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
+import com.zrlog.plugincore.server.runtime.plugin.transport.PluginTransportModels;
+import com.zrlog.plugincore.server.runtime.pwa.PluginPwaManifest;
+import com.zrlog.plugincore.server.vo.PluginCoreSetting;
 import com.zrlog.plugincore.server.web.controller.RuntimeApiModels;
+import com.zrlog.plugincore.server.web.controller.PluginApiModels;
 
 import java.lang.reflect.Method;
 import java.time.ZoneId;
@@ -177,7 +182,7 @@ final class NativeRuntimeWarmup {
         MsgPacketDispose dispose = new MsgPacketDispose();
         dispose.handler(null, packet(new CapabilityInvokeRequest(), ActionType.CAPABILITY_INVOKE), actionHandler);
         dispose.handler(null, packet(new NotificationRequest(), ActionType.NOTIFICATION_PUBLISH), actionHandler);
-        dispose.handler(null, packet(new HashMap<String, Object>(), ActionType.NOTIFICATION_CHANNEL_QUERY), actionHandler);
+        dispose.handler(null, packet(new PluginApiModels.EmptyResponse(), ActionType.NOTIFICATION_CHANNEL_QUERY), actionHandler);
         dispose.handler(null, packet(new SchedulerQueryRequest(), ActionType.SCHEDULER_QUERY), actionHandler);
         dispose.handler(null, packet(new byte[0], ContentType.BYTE, ActionType.PLUGIN_PROCESS_QUERY), actionHandler);
         dispose.handler(null, packet(new SchedulerUpdateRequest(), ActionType.SCHEDULER_UPDATE), actionHandler);
@@ -317,6 +322,73 @@ final class NativeRuntimeWarmup {
         serializeRoundTrip(gson, serviceProviderRow);
         serializeRoundTrip(gson, commentProviderRow);
         serializeRoundTrip(gson, deliveryResponse);
+        warmupPluginApiModels(gson);
+    }
+
+    private static void warmupPluginApiModels(Gson gson) {
+        PluginApiModels.PluginListResponse pluginListResponse = new PluginApiModels.PluginListResponse();
+        pluginListResponse.setPlugins(Collections.<Plugin>emptyList());
+        pluginListResponse.setSetting(new PluginCoreSetting());
+        pluginListResponse.setPluginMetadataReady(true);
+        pluginListResponse.setPluginMetadataLoading(false);
+        pluginListResponse.setDark(false);
+        pluginListResponse.setPrimaryColor("#1677ff");
+        pluginListResponse.setPluginVersion("native");
+        pluginListResponse.setPluginBuildId("native-build");
+        pluginListResponse.setPluginBuildNumber("1");
+        pluginListResponse.setRequiredPlugins(Collections.singleton("comment"));
+        pluginListResponse.setPluginCenter("https://store.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
+
+        PluginApiModels.RefreshCacheResponse refreshCacheResponse = new PluginApiModels.RefreshCacheResponse();
+        refreshCacheResponse.setCode(0);
+        refreshCacheResponse.setMessage("warmup");
+        refreshCacheResponse.setRuntimeEventSuccessCount(1);
+        refreshCacheResponse.setRuntimeEventFailedCount(0);
+        refreshCacheResponse.setRuntimeEventHandlerCount(1);
+        refreshCacheResponse.setLegacySessionCount(0);
+        refreshCacheResponse.setSuccessCount(1);
+
+        serializeRoundTrip(gson, new PluginApiModels.EmptyResponse());
+        serializeRoundTrip(gson, PluginApiModels.ActionResponse.success("warmup"));
+        serializeRoundTrip(gson, pluginListResponse);
+        serializeRoundTrip(gson, refreshCacheResponse);
+        serializeRoundTrip(gson, new PluginApiModels.StatusResponse(0, "STARTED", Collections.singletonList("comment")));
+        warmupPluginTransportModels(gson);
+        serializeRoundTrip(gson, pwaManifest());
+    }
+
+    private static void warmupPluginTransportModels(Gson gson) {
+        serializeRoundTrip(gson, new PluginTransportModels.EmptyResponse());
+        serializeRoundTrip(gson, gson.fromJson("{\"name\":\"email\"}", PluginTransportModels.ServiceRequest.class));
+        serializeRoundTrip(gson, gson.fromJson("{\"key\":\"title,host\"}", PluginTransportModels.WebsiteLoadRequest.class));
+        serializeRoundTrip(gson, gson.fromJson("{\"syncTemplate\":true,\"host\":\"https://static.example\",\"folder\":\"assets\"}",
+                PluginTransportModels.WebsiteSyncOptions.class));
+        serializeRoundTrip(gson, gson.fromJson("{\"alias\":\"hello-world\"}", PluginTransportModels.ArticleVisitRequest.class));
+        serializeRoundTrip(gson, PluginTransportModels.ServiceErrorResponse.error("warmup"));
+        serializeRoundTrip(gson, new PluginTransportModels.InitResponse("AGENT"));
+        serializeRoundTrip(gson, PluginTransportModels.InitErrorResponse.error("warmup"));
+        serializeRoundTrip(gson, PluginTransportModels.OperationResult.success(true));
+        serializeRoundTrip(gson, PluginTransportModels.OperationResult.error("warmup"));
+        serializeRoundTrip(gson, new DbPropertiesResponse("/tmp/db.properties"));
+    }
+
+    private static PluginPwaManifest pwaManifest() {
+        PluginPwaManifest manifest = new PluginPwaManifest();
+        manifest.setId("/admin/plugins/comment/");
+        manifest.setName("Comment");
+        manifest.setShortName("comment");
+        manifest.setDescription("Native warmup");
+        manifest.setStartUrl("/admin/plugins/comment/");
+        manifest.setScope("/admin/plugins/comment/");
+        manifest.setDisplay("standalone");
+        manifest.setThemeColor("#1677ff");
+        manifest.setBackgroundColor("#FFFFFF");
+        PluginPwaManifest.Icon icon = new PluginPwaManifest.Icon();
+        icon.setSrc("/admin/plugins/comment/pwa-icon");
+        icon.setSizes("512x512");
+        icon.setType("image/png");
+        manifest.setIcons(Collections.singletonList(icon));
+        return manifest;
     }
 
     private static RuntimeApiModels.NotificationDeliveryResponse notificationDeliveryResponse(NotificationPublishResult publishResult) {
@@ -452,7 +524,7 @@ final class NativeRuntimeWarmup {
 
         @Override
         public void notificationChannelQuery(IOSession session, MsgPacket msgPacket) {
-            gson.toJson(new HashMap<String, Object>());
+            gson.toJson(new PluginApiModels.EmptyResponse());
             count++;
         }
 

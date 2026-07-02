@@ -1,13 +1,12 @@
 package com.zrlog.plugincore.server.runtime.pwa;
 
+import com.google.gson.Gson;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugincore.server.util.AdminTheme;
 import org.junit.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -17,34 +16,45 @@ import static org.junit.Assert.assertTrue;
 
 public class PluginPwaResourcesTest {
 
+    private static final Gson GSON = new Gson();
+
     @Test
     public void shouldBuildScopedManifestFromExistingPluginMetadata() {
         Plugin plugin = plugin();
 
-        Map<String, Object> manifest = new PluginPwaResources().manifest(plugin, "/admin/plugins/reminder/");
+        PluginPwaManifest manifest = new PluginPwaResources().manifest(plugin, "/admin/plugins/reminder/");
 
-        assertEquals("/admin/plugins/reminder/", manifest.get("id"));
-        assertEquals("Reminder", manifest.get("name"));
-        assertEquals("reminder", manifest.get("short_name"));
-        assertEquals("Create and manage reminders", manifest.get("description"));
-        assertEquals("/admin/plugins/reminder/", manifest.get("start_url"));
-        assertEquals("/admin/plugins/reminder/", manifest.get("scope"));
-        assertEquals("standalone", manifest.get("display"));
-        assertEquals("#1677ff", manifest.get("theme_color"));
-        assertEquals("#FFFFFF", manifest.get("background_color"));
-        List icons = (List) manifest.get("icons");
-        assertEquals("/admin/plugins/reminder/pwa-icon", ((Map) icons.get(0)).get("src"));
-        assertEquals("any", ((Map) icons.get(0)).get("sizes"));
-        assertEquals("image/svg+xml", ((Map) icons.get(0)).get("type"));
+        assertEquals("/admin/plugins/reminder/", manifest.getId());
+        assertEquals("Reminder", manifest.getName());
+        assertEquals("reminder", manifest.getShortName());
+        assertEquals("Create and manage reminders", manifest.getDescription());
+        assertEquals("/admin/plugins/reminder/", manifest.getStartUrl());
+        assertEquals("/admin/plugins/reminder/", manifest.getScope());
+        assertEquals("standalone", manifest.getDisplay());
+        assertEquals("#1677ff", manifest.getThemeColor());
+        assertEquals("#FFFFFF", manifest.getBackgroundColor());
+        assertEquals("/admin/plugins/reminder/pwa-icon", manifest.getIcons().get(0).getSrc());
+        assertEquals("any", manifest.getIcons().get(0).getSizes());
+        assertEquals("image/svg+xml", manifest.getIcons().get(0).getType());
     }
 
     @Test
     public void shouldBuildManifestWithAdminTheme() {
-        Map<String, Object> manifest = new PluginPwaResources().manifest(plugin(), "/admin/plugins/reminder/",
+        PluginPwaManifest manifest = new PluginPwaResources().manifest(plugin(), "/admin/plugins/reminder/",
                 new AdminTheme(true, "#13c2c2"));
 
-        assertEquals("#13c2c2", manifest.get("theme_color"));
-        assertEquals("#000000", manifest.get("background_color"));
+        assertEquals("#13c2c2", manifest.getThemeColor());
+        assertEquals("#000000", manifest.getBackgroundColor());
+    }
+
+    @Test
+    public void shouldSerializeManifestUsingPwaFieldNames() {
+        String json = GSON.toJson(new PluginPwaResources().manifest(plugin(), "/admin/plugins/reminder/"));
+
+        assertTrue(json.contains("\"short_name\":\"reminder\""));
+        assertTrue(json.contains("\"start_url\":\"/admin/plugins/reminder/\""));
+        assertTrue(json.contains("\"theme_color\":\"#1677ff\""));
+        assertTrue(json.contains("\"background_color\":\"#FFFFFF\""));
     }
 
     @Test
@@ -79,13 +89,12 @@ public class PluginPwaResourcesTest {
 
     @Test
     public void shouldBuildScopedManifestWithContextPath() {
-        Map<String, Object> manifest = new PluginPwaResources().manifest(plugin(), "/sub/admin/plugins/reminder/");
+        PluginPwaManifest manifest = new PluginPwaResources().manifest(plugin(), "/sub/admin/plugins/reminder/");
 
-        assertEquals("/sub/admin/plugins/reminder/", manifest.get("id"));
-        assertEquals("/sub/admin/plugins/reminder/", manifest.get("start_url"));
-        assertEquals("/sub/admin/plugins/reminder/", manifest.get("scope"));
-        List icons = (List) manifest.get("icons");
-        assertEquals("/sub/admin/plugins/reminder/pwa-icon", ((Map) icons.get(0)).get("src"));
+        assertEquals("/sub/admin/plugins/reminder/", manifest.getId());
+        assertEquals("/sub/admin/plugins/reminder/", manifest.getStartUrl());
+        assertEquals("/sub/admin/plugins/reminder/", manifest.getScope());
+        assertEquals("/sub/admin/plugins/reminder/pwa-icon", manifest.getIcons().get(0).getSrc());
     }
 
     private Plugin plugin() {

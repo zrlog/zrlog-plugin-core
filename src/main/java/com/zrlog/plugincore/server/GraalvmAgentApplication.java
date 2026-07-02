@@ -7,6 +7,7 @@ import com.hibegin.http.server.util.PathUtil;
 import com.zrlog.plugin.common.PluginNativeImageUtils;
 import com.zrlog.plugin.message.CapabilityInvokeRequest;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
+import com.zrlog.plugin.message.DbPropertiesResponse;
 import com.zrlog.plugin.message.NotificationRequest;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -28,6 +29,8 @@ import com.zrlog.plugincore.server.runtime.notification.NotificationDeliveryDocu
 import com.zrlog.plugincore.server.runtime.notification.NotificationPublishResult;
 import com.zrlog.plugincore.server.runtime.notification.NotificationProviderSetting;
 import com.zrlog.plugincore.server.runtime.notification.NotificationSetting;
+import com.zrlog.plugincore.server.runtime.plugin.transport.PluginTransportModels;
+import com.zrlog.plugincore.server.runtime.pwa.PluginPwaManifest;
 import com.zrlog.plugincore.server.runtime.scheduler.AutomationDocument;
 import com.zrlog.plugincore.server.runtime.scheduler.AutomationRunDocument;
 import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomation;
@@ -43,6 +46,7 @@ import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeState;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateDocument;
 import com.zrlog.plugincore.server.web.controller.RuntimeApiModels;
+import com.zrlog.plugincore.server.web.controller.PluginApiModels;
 
 import java.io.File;
 import java.io.IOException;
@@ -121,7 +125,24 @@ public class GraalvmAgentApplication {
                 RuntimeApiModels.InvocationLogResponse.class,
                 RuntimeApiModels.NotificationDeliveryResponse.class,
                 RuntimeApiModels.ServiceProviderRow.class,
-                RuntimeApiModels.CommentProviderRow.class
+                RuntimeApiModels.CommentProviderRow.class,
+                PluginApiModels.EmptyResponse.class,
+                PluginApiModels.ActionResponse.class,
+                PluginApiModels.PluginListResponse.class,
+                PluginApiModels.RefreshCacheResponse.class,
+                PluginApiModels.StatusResponse.class,
+                PluginTransportModels.EmptyResponse.class,
+                PluginTransportModels.ServiceRequest.class,
+                PluginTransportModels.WebsiteLoadRequest.class,
+                PluginTransportModels.WebsiteSyncOptions.class,
+                PluginTransportModels.ArticleVisitRequest.class,
+                PluginTransportModels.ServiceErrorResponse.class,
+                PluginTransportModels.InitResponse.class,
+                PluginTransportModels.InitErrorResponse.class,
+                PluginTransportModels.OperationResult.class,
+                DbPropertiesResponse.class,
+                PluginPwaManifest.class,
+                PluginPwaManifest.Icon.class
         );
     }
 }

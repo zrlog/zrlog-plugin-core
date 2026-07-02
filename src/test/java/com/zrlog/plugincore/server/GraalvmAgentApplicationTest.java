@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server;
 
 import com.zrlog.plugin.message.CapabilityInvokeRequest;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
+import com.zrlog.plugin.message.DbPropertiesResponse;
 import com.zrlog.plugin.message.NotificationRequest;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -13,6 +14,7 @@ import com.zrlog.plugin.message.SchedulerUpdateResult;
 import com.zrlog.plugincore.server.runtime.notification.NotificationDelivery;
 import com.zrlog.plugincore.server.runtime.notification.NotificationProviderSetting;
 import com.zrlog.plugincore.server.runtime.notification.NotificationSetting;
+import com.zrlog.plugincore.server.runtime.plugin.transport.PluginTransportModels;
 import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomation;
 import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomationRun;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerProviderSetting;
@@ -72,6 +74,16 @@ public class GraalvmAgentApplicationTest {
         assertTrue(classes.contains(RuntimeApiModels.NotificationDeliveryResponse.class));
         assertTrue(classes.contains(RuntimeApiModels.ServiceProviderRow.class));
         assertTrue(classes.contains(RuntimeApiModels.CommentProviderRow.class));
+        assertTrue(classes.contains(PluginTransportModels.EmptyResponse.class));
+        assertTrue(classes.contains(PluginTransportModels.ServiceRequest.class));
+        assertTrue(classes.contains(PluginTransportModels.WebsiteLoadRequest.class));
+        assertTrue(classes.contains(PluginTransportModels.WebsiteSyncOptions.class));
+        assertTrue(classes.contains(PluginTransportModels.ArticleVisitRequest.class));
+        assertTrue(classes.contains(PluginTransportModels.ServiceErrorResponse.class));
+        assertTrue(classes.contains(PluginTransportModels.InitResponse.class));
+        assertTrue(classes.contains(PluginTransportModels.InitErrorResponse.class));
+        assertTrue(classes.contains(PluginTransportModels.OperationResult.class));
+        assertTrue(classes.contains(DbPropertiesResponse.class));
     }
 
     @Test

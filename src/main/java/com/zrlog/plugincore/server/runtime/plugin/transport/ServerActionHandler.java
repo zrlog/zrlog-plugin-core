@@ -2,7 +2,6 @@ package com.zrlog.plugincore.server.runtime.plugin.transport;
 
 import com.google.gson.Gson;
 import com.hibegin.common.dao.DAO;
-import com.hibegin.common.dao.ResultValueConvertUtils;
 import com.hibegin.common.util.EnvKit;
 import com.hibegin.common.util.LoggerUtil;
 import com.zrlog.plugin.IOSession;
@@ -117,9 +116,8 @@ public class ServerActionHandler implements IActionHandler {
         List<PluginCapability> capabilities = new CapabilityRegistrationService(capabilityStore)
                 .registerCapabilitiesFromInitPayload(plugin, msgPacket.getDataStr());
         stateService.markReady(plugin.getId(), pluginName, processId);
-        Map<String, String> map = new HashMap<>();
-        map.put("runType", RunConstants.runType.toString());
-        session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+        session.sendJsonMsg(new PluginTransportModels.InitResponse(RunConstants.runType.toString()),
+                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
         return capabilities;
     }
 
@@ -130,7 +128,8 @@ public class ServerActionHandler implements IActionHandler {
                                                    PluginRuntimeStateService stateService,
                                                    RuntimeException e) {
         LOGGER.log(Level.WARNING, PluginLogContext.prefix("init plugin runtime error"), e);
-        session.sendJsonMsg(errorMap(e.getMessage()), msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+        session.sendJsonMsg(PluginTransportModels.InitErrorResponse.error(e.getMessage()),
+                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
         if (plugin == null) {
             return;
         }
@@ -153,13 +152,6 @@ public class ServerActionHandler implements IActionHandler {
             // Scheduler bootstrap is runtime feature setup; it must not fail plugin lifecycle initialization.
             LOGGER.log(Level.WARNING, PluginLogContext.prefix("init plugin default automations error"), e);
         }
-    }
-
-    private Map<String, Object> errorMap(String message) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("success", false);
-        map.put("message", message == null || message.trim().isEmpty() ? "Plugin init failed" : message);
-        return map;
     }
 
     @Override
@@ -370,8 +362,9 @@ public class ServerActionHandler implements IActionHandler {
     @Override
     public void loadWebSite(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            Map map = new Gson().fromJson(msgPacket.getDataStr(), Map.class);
-            String[] rawKeys = ((String) map.get("key")).split(",");
+            PluginTransportModels.WebsiteLoadRequest request =
+                    new Gson().fromJson(msgPacket.getDataStr(), PluginTransportModels.WebsiteLoadRequest.class);
+            String[] rawKeys = request.rawKeys();
             try {
                 Map<String, Object> webSiteByNameIn = new WebSiteDAO().getWebSiteByNameIn(Arrays.asList(Arrays.stream(rawKeys).map(e -> {
                     return toWebSiteName(session, e);
@@ -390,7 +383,10 @@ public class ServerActionHandler implements IActionHandler {
     @Override
     public void setWebSite(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            Map<String, Object> map = new Gson().fromJson(msgPacket.getDataStr(), Map.class);
+            Gson gson = new Gson();
+            Map<String, Object> map = gson.fromJson(msgPacket.getDataStr(), Map.class);
+            PluginTransportModels.WebsiteSyncOptions syncOptions =
+                    gson.fromJson(msgPacket.getDataStr(), PluginTransportModels.WebsiteSyncOptions.class);
 
             Map<String, Object> resultMap = new HashMap<>();
             try {
@@ -408,10 +404,10 @@ public class ServerActionHandler implements IActionHandler {
             } catch (SQLException e) {
                 LOGGER.log(Level.SEVERE, PluginLogContext.prefix("set website failed"), e);
             }
-            if (map.get("syncTemplate") != null) {
-                if (ResultValueConvertUtils.toBoolean(map.get("syncTemplate"))) {
-                    String accessHost = (String) map.get("host");
-                    String accessFolder = (String) map.get("folder");
+            if (syncOptions != null && syncOptions.hasSyncTemplate()) {
+                if (syncOptions.isSyncTemplateEnabled()) {
+                    String accessHost = syncOptions.getHost();
+                    String accessFolder = syncOptions.getFolder();
                     if (accessHost != null && accessFolder != null) {
                         accessHost = accessFolder + "/" + accessFolder;
                     }
@@ -462,16 +458,15 @@ public class ServerActionHandler implements IActionHandler {
     public void deleteComment(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
             Comment comment = new Gson().fromJson(msgPacket.getDataStr(), Comment.class);
-            Map<String, Boolean> map = new HashMap<>();
             if (comment.getPostId() != null) {
                 try {
                     boolean result = new CommentDAO().set("postId", comment.getPostId()).delete();
-                    map.put("result", result);
-                    session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                    session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
+                            msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
                 } catch (SQLException e) {
-                    map.put("result", false);
                     LOGGER.log(Level.SEVERE, PluginLogContext.prefix("delete comment error"), e);
-                    session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                    session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
+                            msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
                 }
             }
         }
@@ -481,16 +476,15 @@ public class ServerActionHandler implements IActionHandler {
     public void addComment(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
             Comment comment = new Gson().fromJson(msgPacket.getDataStr(), Comment.class);
-            Map<String, Boolean> map = new HashMap<>();
             try {
                 boolean result = new CommentDAO().set("userHome", comment.getHome()).set("userMail", comment.getMail()).set("userIp", comment.getIp()).set("userName", comment.getName()).set("logId", comment.getLogId()).set("postId", comment.getPostId()).set("userComment", comment.getContent()).set("commTime", comment.getCreatedTime()).set("td", new Date()).set("header", comment.getHeadPortrait()).set("hide", 1).save();
 
-                map.put("result", result);
-                session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
             } catch (SQLException e) {
-                map.put("result", false);
                 LOGGER.log(Level.SEVERE, PluginLogContext.prefix("save comment error"), e);
-                session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
             }
         }
     }
@@ -503,9 +497,8 @@ public class ServerActionHandler implements IActionHandler {
     @Override
     public void getDbProperties(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            Map<String, Object> map = new HashMap<>();
-            map.put("dbProperties", pluginConfig().getDbPropertiesFile().toString());
-            session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+            session.sendJsonMsg(new DbPropertiesResponse(pluginConfig().getDbPropertiesFile().toString()),
+                    msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
         }
     }
 
@@ -584,7 +577,6 @@ public class ServerActionHandler implements IActionHandler {
                     LOGGER.log(Level.SEVERE, PluginLogContext.prefix("Build article alias failed"), e);
                 }
             }
-            Map<String, Boolean> map = new HashMap<>();
             try {
                 Integer logId = (Integer) new ArticleDAO().queryFirstObj("select logId from log where alias = ?", alias);
                 DAO articleDAO = new ArticleDAO().set("releaseTime", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(createArticleRequest.getReleaseDate())).set("last_update_date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(createArticleRequest.getReleaseDate())).set("content", createArticleRequest.getContent()).set("title", createArticleRequest.getTitle()).set("markdown", createArticleRequest.getMarkdown()).set("digest", createArticleRequest.getDigest()).set("typeId", typeId).set("private", createArticleRequest.is_private()).set("rubbish", createArticleRequest.isRubbish()).set("alias", alias).set("plain_content", getPlainSearchTxt(createArticleRequest.getContent())).set("thumbnail", createArticleRequest.getThumbnail()).set("canComment", createArticleRequest.isCanComment()).set("recommended", createArticleRequest.isRecommended()).set("keywords", createArticleRequest.getKeywords()).set("editor_type", createArticleRequest.getEditorType()).set("userId", createArticleRequest.getUserId());
@@ -592,12 +584,12 @@ public class ServerActionHandler implements IActionHandler {
                     try {
                         boolean result = articleDAO.save();
                         doRefreshCache();
-                        map.put("result", result);
-                        session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
+                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
                     } catch (Exception e) {
-                        map.put("result", false);
                         LOGGER.log(Level.SEVERE, PluginLogContext.prefix("save article error"), e);
-                        session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
+                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
                     }
                 } else {
                     try {
@@ -605,12 +597,12 @@ public class ServerActionHandler implements IActionHandler {
                         cond.put("logId", logId);
                         boolean result = articleDAO.update(cond);
                         doRefreshCache();
-                        map.put("result", result);
-                        session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
+                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
                     } catch (Exception e) {
-                        map.put("result", false);
                         LOGGER.log(Level.SEVERE, PluginLogContext.prefix("update article error"), e);
-                        session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
+                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
                     }
                 }
             } catch (SQLException e) {
@@ -622,15 +614,13 @@ public class ServerActionHandler implements IActionHandler {
     @Override
     public void refreshCache(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            Map<String, Object> map = new HashMap<>();
             try {
                 doRefreshCache();
-                map.put("result", true);
-                session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(true),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
             } catch (Exception e) {
-                map.put("result", false);
-                map.put("message", LoggerUtil.recordStackTraceMsg(e));
-                session.sendJsonMsg(new HashMap<>(), msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                session.sendJsonMsg(new PluginTransportModels.EmptyResponse(),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
             }
         }
     }
@@ -638,18 +628,16 @@ public class ServerActionHandler implements IActionHandler {
     @Override
     public void articleVisitViewCountAddOne(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            Map info = new Gson().fromJson(msgPacket.getDataStr(), Map.class);
-            String alias = info.get("alias").toString();
-            Map<String, Object> map = new HashMap<>();
-
+            PluginTransportModels.ArticleVisitRequest request =
+                    new Gson().fromJson(msgPacket.getDataStr(), PluginTransportModels.ArticleVisitRequest.class);
+            String alias = request.getAlias();
             try {
                 new DAO().execute("update log set click = click + 1  where logId=? or alias=?", alias, alias);
-                map.put("result", true);
-                session.sendJsonMsg(map, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(true),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
             } catch (SQLException e) {
-                map.put("result", false);
-                map.put("message", LoggerUtil.recordStackTraceMsg(e));
-                session.sendJsonMsg(new HashMap<>(), msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                session.sendJsonMsg(new PluginTransportModels.EmptyResponse(),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
             }
         }
     }

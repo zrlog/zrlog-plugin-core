@@ -16,8 +16,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 public class PluginPwaResources {
 
@@ -61,28 +59,28 @@ public class PluginPwaResources {
         return true;
     }
 
-    public Map<String, Object> manifest(Plugin plugin, String basePath) {
+    public PluginPwaManifest manifest(Plugin plugin, String basePath) {
         return manifest(plugin, basePath, new AdminTheme(false, PublicInfoLoader.DEFAULT_ADMIN_COLOR_PRIMARY));
     }
 
-    public Map<String, Object> manifest(Plugin plugin, String basePath, AdminTheme theme) {
+    public PluginPwaManifest manifest(Plugin plugin, String basePath, AdminTheme theme) {
         String normalizedBasePath = ensureTrailingSlash(isBlank(basePath) ? "/" : basePath);
         AdminTheme adminTheme = theme == null ? new AdminTheme(false, PublicInfoLoader.DEFAULT_ADMIN_COLOR_PRIMARY) : theme;
-        Map<String, Object> manifest = new LinkedHashMap<>();
-        manifest.put("id", normalizedBasePath);
-        manifest.put("name", firstNonBlank(plugin.getName(), plugin.getShortName()));
-        manifest.put("short_name", firstNonBlank(plugin.getShortName(), plugin.getName()));
+        PluginPwaManifest manifest = new PluginPwaManifest();
+        manifest.setId(normalizedBasePath);
+        manifest.setName(firstNonBlank(plugin.getName(), plugin.getShortName()));
+        manifest.setShortName(firstNonBlank(plugin.getShortName(), plugin.getName()));
         if (!isBlank(plugin.getDesc())) {
-            manifest.put("description", plugin.getDesc());
+            manifest.setDescription(plugin.getDesc());
         }
-        manifest.put("start_url", normalizedBasePath);
-        manifest.put("scope", normalizedBasePath);
-        manifest.put("display", "standalone");
-        manifest.put("theme_color", adminTheme.getAdminColorPrimary());
-        manifest.put("background_color", adminTheme.isDarkMode() ? "#000000" : "#FFFFFF");
+        manifest.setStartUrl(normalizedBasePath);
+        manifest.setScope(normalizedBasePath);
+        manifest.setDisplay("standalone");
+        manifest.setThemeColor(adminTheme.getAdminColorPrimary());
+        manifest.setBackgroundColor(adminTheme.isDarkMode() ? "#000000" : "#FFFFFF");
         PreviewIcon icon = previewIcon(plugin.getPreviewImageBase64());
         if (icon != null) {
-            manifest.put("icons", Collections.singletonList(iconManifestEntry(normalizedBasePath, icon)));
+            manifest.setIcons(Collections.singletonList(iconManifestEntry(normalizedBasePath, icon)));
         }
         return manifest;
     }
@@ -151,11 +149,11 @@ public class PluginPwaResources {
         }
     }
 
-    private static Map<String, Object> iconManifestEntry(String basePath, PreviewIcon icon) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("src", ensureTrailingSlash(basePath) + ICON);
-        item.put("sizes", "image/svg+xml".equals(icon.getContentType()) ? "any" : "512x512");
-        item.put("type", icon.getContentType());
+    private static PluginPwaManifest.Icon iconManifestEntry(String basePath, PreviewIcon icon) {
+        PluginPwaManifest.Icon item = new PluginPwaManifest.Icon();
+        item.setSrc(ensureTrailingSlash(basePath) + ICON);
+        item.setSizes("image/svg+xml".equals(icon.getContentType()) ? "any" : "512x512");
+        item.setType(icon.getContentType());
         return item;
     }
 

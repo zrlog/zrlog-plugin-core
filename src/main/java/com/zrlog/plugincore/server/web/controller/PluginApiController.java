@@ -12,6 +12,7 @@ import com.zrlog.plugin.data.codec.ContentType;
 import com.zrlog.plugin.data.codec.HttpRequestInfo;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
+import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.type.ActionType;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.model.PluginCore;
@@ -61,31 +62,31 @@ public class PluginApiController extends Controller {
     }
 
     @ResponseBody
-    public Map<String, Object> plugins() {
+    public PluginApiModels.PluginListResponse plugins() {
         AdminTheme adminTheme = AdminTheme.fromRequest(getRequest());
         boolean pluginMetadataReady = PluginCoreRunMode.isNativeAgent()
                 || pluginBootstrap().isCurrentBootstrapReady();
         PluginCore pluginCore = PluginCoreRunMode.isNativeAgent() ? null : PluginCoreDAO.getInstance().loadSnapshot();
-        Map<String, Object> map = new HashMap<>();
-        map.put("plugins", pluginsForCurrentMode(pluginCore));
-        map.put("setting", pluginCore == null ? new PluginCoreSetting() : pluginCore.getSetting());
-        map.put("pluginMetadataReady", pluginMetadataReady);
-        map.put("pluginMetadataLoading", pluginBootstrap().isBootstrapRunning());
-        map.put("dark", adminTheme.isDarkMode());
-        map.put("primaryColor", adminTheme.getAdminColorPrimary());
-        map.put("pluginVersion", ConfigKit.get("version", ""));
-        map.put("pluginBuildId", ConfigKit.get("buildId", ""));
-        map.put("pluginBuildNumber", ConfigKit.get("buildNumber", ""));
-        map.put("requiredPlugins", pluginBootstrap().getRequiredPlugins().keySet());
-        map.put("pluginCenter", "https://store.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
-        return map;
+        PluginApiModels.PluginListResponse response = new PluginApiModels.PluginListResponse();
+        response.setPlugins(pluginsForCurrentMode(pluginCore));
+        response.setSetting(pluginCore == null ? new PluginCoreSetting() : pluginCore.getSetting());
+        response.setPluginMetadataReady(pluginMetadataReady);
+        response.setPluginMetadataLoading(pluginBootstrap().isBootstrapRunning());
+        response.setDark(adminTheme.isDarkMode());
+        response.setPrimaryColor(adminTheme.getAdminColorPrimary());
+        response.setPluginVersion(String.valueOf(ConfigKit.get("version", "")));
+        response.setPluginBuildId(String.valueOf(ConfigKit.get("buildId", "")));
+        response.setPluginBuildNumber(String.valueOf(ConfigKit.get("buildNumber", "")));
+        response.setRequiredPlugins(pluginBootstrap().getRequiredPlugins().keySet());
+        response.setPluginCenter("https://store.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
+        return response;
     }
 
-    static List<?> pluginsForCurrentMode() {
+    static List<Plugin> pluginsForCurrentMode() {
         return PluginCoreRunMode.isNativeAgent() ? Collections.emptyList() : pluginsForCurrentMode(PluginCoreDAO.getInstance().loadSnapshot());
     }
 
-    static List<?> pluginsForCurrentMode(PluginCore pluginCore) {
+    static List<Plugin> pluginsForCurrentMode(PluginCore pluginCore) {
         if (PluginCoreRunMode.isNativeAgent() || pluginCore == null || pluginCore.getPluginInfoMap() == null) {
             return Collections.emptyList();
         }
@@ -106,67 +107,48 @@ public class PluginApiController extends Controller {
     }
 
     @ResponseBody
-    public Map<String, Object> stop() {
-        Map<String, Object> map = new HashMap<>();
+    public PluginApiModels.ActionResponse stop() {
         if (getSession() != null) {
             String pluginShortName = getSession().getPlugin().getShortName();
             pluginBootstrap().stopPlugin(pluginShortName);
-            map.put("code", 0);
-            map.put("message", "停止成功");
-        } else {
-            map.put("code", 1);
-            map.put("message", "插件没有启动");
+            return PluginApiModels.ActionResponse.success("停止成功");
         }
-        return map;
+        return PluginApiModels.ActionResponse.error("插件没有启动");
 
     }
 
     @ResponseBody
-    public Map<String, Object> start() throws IOException {
-        Map<String, Object> map = new HashMap<>();
-
+    public PluginApiModels.ActionResponse start() throws IOException {
         String pluginShortName = getRequest().getParaToStr("name");
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginCore, pluginShortName);
         if (pluginVO == null || pluginVO.getPlugin() == null) {
-            map.put("code", 1);
-            map.put("message", "插件不存在");
-            return map;
+            return PluginApiModels.ActionResponse.error("插件不存在");
         }
         String pluginId = pluginVO.getPlugin().getId();
         if (PluginSessions.isRunningByPluginId(pluginId)) {
-            map.put("code", 1);
-            map.put("message", "插件已经启动了");
-            return map;
+            return PluginApiModels.ActionResponse.error("插件已经启动了");
         }
         boolean started = runtimeStateService(pluginCore).ensureStarted(pluginId);
-        map.put("code", started ? 0 : 1);
-        map.put("message", started ? "插件启动成功" : "插件启动失败");
-        return map;
+        return new PluginApiModels.ActionResponse(started ? 0 : 1, started ? "插件启动成功" : "插件启动失败");
     }
 
     @ResponseBody
-    public Map<String, Object> uninstall() {
+    public PluginApiModels.ActionResponse uninstall() {
         String pluginShortName = getRequest().getParaToStr("name");
         if (pluginBootstrap().getRequiredPlugins().containsKey(pluginShortName)) {
-            Map<String, Object> map = new HashMap<>();
-            map.put("code", 1);
-            map.put("message", "必要插件，无法移除");
-            return map;
+            return PluginApiModels.ActionResponse.error("必要插件，无法移除");
         }
         IOSession session = getSession();
         if (session != null) {
             session.sendMsg(new MsgPacket(genInfo(), ContentType.JSON, MsgPacketStatus.SEND_REQUEST, IdUtil.getInt(), ActionType.PLUGIN_UNINSTALL.name()));
         }
         pluginBootstrap().deletePlugin(pluginShortName);
-        Map<String, Object> map = new HashMap<>();
-        map.put("code", 0);
-        map.put("message", "移除成功");
-        return map;
+        return PluginApiModels.ActionResponse.success("移除成功");
     }
 
     @ResponseBody
-    public Map<String, Object> refreshCache() {
+    public PluginApiModels.RefreshCacheResponse refreshCache() {
         WebsiteRuntimeKvStore kvStore = new WebsiteRuntimeKvStore();
         RuntimeEventRequest eventRequest = refreshCacheRequest();
         long startedAtMs = System.currentTimeMillis();
@@ -176,15 +158,15 @@ public class PluginApiController extends Controller {
         int successCount = eventResult.getSuccessCount() + legacySessionCount;
         new InvocationLogStore(kvStore).append(refreshCacheInvocationLog(eventRequest, eventResult, startedAtMs, System.currentTimeMillis()));
 
-        Map<String, Object> map = new HashMap<>();
-        map.put("code", failedCount == 0 ? 0 : 1);
-        map.put("message", failedCount == 0 ? "更新缓存成功" : "部分插件更新缓存失败");
-        map.put("runtimeEventSuccessCount", eventResult.getSuccessCount());
-        map.put("runtimeEventFailedCount", failedCount);
-        map.put("runtimeEventHandlerCount", eventResult.getHandlerCount());
-        map.put("legacySessionCount", legacySessionCount);
-        map.put("successCount", successCount);
-        return map;
+        PluginApiModels.RefreshCacheResponse response = new PluginApiModels.RefreshCacheResponse();
+        response.setCode(failedCount == 0 ? 0 : 1);
+        response.setMessage(failedCount == 0 ? "更新缓存成功" : "部分插件更新缓存失败");
+        response.setRuntimeEventSuccessCount(eventResult.getSuccessCount());
+        response.setRuntimeEventFailedCount(failedCount);
+        response.setRuntimeEventHandlerCount(eventResult.getHandlerCount());
+        response.setLegacySessionCount(legacySessionCount);
+        response.setSuccessCount(successCount);
+        return response;
     }
 
     private int broadcastLegacyRefreshCache(Set<String> runtimeEventHandlerPluginIds) {
@@ -242,7 +224,7 @@ public class PluginApiController extends Controller {
     }
 
     @ResponseBody
-    public Map<String, Object> status() {
+    public PluginApiModels.StatusResponse status() {
         List<String> plugins = PluginSessions.getAllLocalSessions().stream().map(e -> e.getPlugin().getShortName()).collect(Collectors.toList());
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         boolean onDemandEnabled = Boolean.TRUE.equals(pluginCore.getSetting().getRuntime().getOnDemandEnabled());
@@ -250,9 +232,9 @@ public class PluginApiController extends Controller {
         return statusResponse(onDemandEnabled, allRunning, plugins);
     }
 
-    static Map<String, Object> statusResponse(boolean onDemandEnabled, boolean allRunning, List<String> runningPlugins) {
+    static PluginApiModels.StatusResponse statusResponse(boolean onDemandEnabled, boolean allRunning, List<String> runningPlugins) {
         String status = onDemandEnabled || allRunning ? "STARTED" : "STARTING";
-        return Map.of("code", 0, "status", status, "runningPlugins", runningPlugins);
+        return new PluginApiModels.StatusResponse(0, status, runningPlugins);
     }
 
     private PluginRuntimeStateService runtimeStateService(PluginCore pluginCore) {
