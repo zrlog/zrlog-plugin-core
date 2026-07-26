@@ -22,6 +22,7 @@ import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.dao.*;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
+import com.zrlog.plugincore.server.runtime.article.ArticleExtensionRepository;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityRegistrationService;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityStore;
 import com.zrlog.plugincore.server.runtime.capability.InvokeContext;
@@ -609,6 +610,58 @@ public class ServerActionHandler implements IActionHandler {
                 LOGGER.log(Level.SEVERE, PluginLogContext.prefix("Create article failed"), e);
             }
         }
+    }
+
+    @Override
+    public void getArticleExtension(IOSession session, MsgPacket msgPacket) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
+            ArticleExtensionGetRequest request =
+                    new Gson().fromJson(msgPacket.getDataStr(), ArticleExtensionGetRequest.class);
+            ArticleExtensionResult result;
+            if (request == null || request.getArticleId() == null) {
+                result = ArticleExtensionResult.error("articleId is required");
+            } else {
+                result = new ArticleExtensionRepository().get(
+                        request.getArticleId(), articleExtensionNamespace(session));
+            }
+            sendArticleExtensionResult(session, msgPacket, result);
+        }
+    }
+
+    @Override
+    public void setArticleExtension(IOSession session, MsgPacket msgPacket) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
+            ArticleExtensionSetRequest request =
+                    new Gson().fromJson(msgPacket.getDataStr(), ArticleExtensionSetRequest.class);
+            ArticleExtensionResult result = new ArticleExtensionRepository()
+                    .set(articleExtensionNamespace(session), request);
+            sendArticleExtensionResult(session, msgPacket, result);
+        }
+    }
+
+    @Override
+    public void queryArticleExtension(IOSession session, MsgPacket msgPacket) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
+            ArticleExtensionQueryRequest request =
+                    new Gson().fromJson(msgPacket.getDataStr(), ArticleExtensionQueryRequest.class);
+            ArticleExtensionQueryResult result = new ArticleExtensionRepository()
+                    .query(articleExtensionNamespace(session), request);
+            session.sendJsonMsg(result, msgPacket.getMethodStr(), msgPacket.getMsgId(),
+                    result.isSuccess() ? MsgPacketStatus.RESPONSE_SUCCESS : MsgPacketStatus.RESPONSE_ERROR);
+        }
+    }
+
+    private void sendArticleExtensionResult(IOSession session, MsgPacket msgPacket,
+                                            ArticleExtensionResult result) {
+        session.sendJsonMsg(result, msgPacket.getMethodStr(), msgPacket.getMsgId(),
+                result.isSuccess() ? MsgPacketStatus.RESPONSE_SUCCESS : MsgPacketStatus.RESPONSE_ERROR);
+    }
+
+    private String articleExtensionNamespace(IOSession session) {
+        if (session == null || session.getPlugin() == null) {
+            return "";
+        }
+        return session.getPlugin().getShortName();
     }
 
     @Override

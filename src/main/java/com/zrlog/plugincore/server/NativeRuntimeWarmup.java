@@ -16,6 +16,11 @@ import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
 import com.zrlog.plugin.message.CapabilityInvokeRequest;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
+import com.zrlog.plugin.message.ArticleExtensionGetRequest;
+import com.zrlog.plugin.message.ArticleExtensionQueryRequest;
+import com.zrlog.plugin.message.ArticleExtensionQueryResult;
+import com.zrlog.plugin.message.ArticleExtensionResult;
+import com.zrlog.plugin.message.ArticleExtensionSetRequest;
 import com.zrlog.plugin.message.DbPropertiesResponse;
 import com.zrlog.plugin.message.NotificationRequest;
 import com.zrlog.plugin.message.Plugin;
@@ -159,6 +164,9 @@ final class NativeRuntimeWarmup {
         ActionType.valueOf(ActionType.SCHEDULER_QUERY.name());
         ActionType.valueOf(ActionType.PLUGIN_PROCESS_QUERY.name());
         ActionType.valueOf(ActionType.SCHEDULER_UPDATE.name());
+        ActionType.valueOf(ActionType.ARTICLE_EXTENSION_GET.name());
+        ActionType.valueOf(ActionType.ARTICLE_EXTENSION_SET.name());
+        ActionType.valueOf(ActionType.ARTICLE_EXTENSION_QUERY.name());
     }
 
     @SuppressWarnings("unchecked")
@@ -186,6 +194,9 @@ final class NativeRuntimeWarmup {
         dispose.handler(null, packet(new SchedulerQueryRequest(), ActionType.SCHEDULER_QUERY), actionHandler);
         dispose.handler(null, packet(new byte[0], ContentType.BYTE, ActionType.PLUGIN_PROCESS_QUERY), actionHandler);
         dispose.handler(null, packet(new SchedulerUpdateRequest(), ActionType.SCHEDULER_UPDATE), actionHandler);
+        dispose.handler(null, packet(new ArticleExtensionGetRequest(), ActionType.ARTICLE_EXTENSION_GET), actionHandler);
+        dispose.handler(null, packet(new ArticleExtensionSetRequest(), ActionType.ARTICLE_EXTENSION_SET), actionHandler);
+        dispose.handler(null, packet(new ArticleExtensionQueryRequest(), ActionType.ARTICLE_EXTENSION_QUERY), actionHandler);
         return actionHandler.getCount();
     }
 
@@ -548,6 +559,27 @@ final class NativeRuntimeWarmup {
             result.setSuccess(false);
             result.setErrorMessage("Scheduler writes are managed by plugin-core");
             gson.toJson(result);
+            count++;
+        }
+
+        @Override
+        public void getArticleExtension(IOSession session, MsgPacket msgPacket) {
+            gson.toJson(msgPacket.convertToClass(ArticleExtensionGetRequest.class));
+            gson.toJson(new ArticleExtensionResult());
+            count++;
+        }
+
+        @Override
+        public void setArticleExtension(IOSession session, MsgPacket msgPacket) {
+            gson.toJson(msgPacket.convertToClass(ArticleExtensionSetRequest.class));
+            gson.toJson(new ArticleExtensionResult());
+            count++;
+        }
+
+        @Override
+        public void queryArticleExtension(IOSession session, MsgPacket msgPacket) {
+            gson.toJson(msgPacket.convertToClass(ArticleExtensionQueryRequest.class));
+            gson.toJson(new ArticleExtensionQueryResult());
             count++;
         }
 
