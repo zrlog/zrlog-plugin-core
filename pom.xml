@@ -55,7 +55,7 @@
         <dependency>
             <groupId>com.hibegin</groupId>
             <artifactId>common-dao</artifactId>
-            <version>1.1.10-SNAPSHOT</version>
+            <version>1.1.11</version>
         </dependency>
         <dependency>
             <groupId>org.jsoup</groupId>
