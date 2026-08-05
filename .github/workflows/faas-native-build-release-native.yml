@@ -12,6 +12,7 @@ jobs:
       cancel-in-progress: true # 取消前一个任务
 
     strategy:
+      fail-fast: false
       matrix:
         os: [ ubuntu-22.04,ubuntu-24.04-arm ]
     steps:
