@@ -55,6 +55,11 @@ public class PluginHandleTest {
     }
 
     @Test
+    public void shouldTreatRequiredPluginAsPluginRequestBeforeDownload() {
+        assertTrue(PluginHandle.shouldTreatAsPluginRequest("comment", false, false, true));
+    }
+
+    @Test
     public void shouldNotTreatUnknownPathAsPluginRequest() {
         assertFalse(PluginHandle.shouldTreatAsPluginRequest("missing", false, false));
     }

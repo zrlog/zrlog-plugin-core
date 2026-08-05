@@ -39,6 +39,10 @@ public final class PluginSessions {
         return registry().getOrStartLocalSessionByPluginShortName(pluginShortName);
     }
 
+    public static boolean isRequiredPlugin(String pluginShortName) {
+        return registry().isRequiredPlugin(pluginShortName);
+    }
+
     public static IOSession getLocalSessionByPluginId(String pluginId) {
         return registry().getLocalSessionByPluginId(pluginId);
     }

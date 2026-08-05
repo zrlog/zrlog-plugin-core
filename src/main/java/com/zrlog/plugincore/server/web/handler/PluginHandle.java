@@ -118,13 +118,19 @@ public class PluginHandle implements HttpErrorHandle {
     private boolean isPluginRequest(String pluginShortName) {
         return shouldTreatAsPluginRequest(pluginShortName,
                 registeredPlugin(pluginShortName),
-                pluginFileExists(pluginShortName));
+                pluginFileExists(pluginShortName),
+                PluginSessions.isRequiredPlugin(pluginShortName));
     }
 
     static boolean shouldTreatAsPluginRequest(String pluginShortName, boolean registeredPlugin, boolean pluginFileExists) {
+        return shouldTreatAsPluginRequest(pluginShortName, registeredPlugin, pluginFileExists, false);
+    }
+
+    static boolean shouldTreatAsPluginRequest(String pluginShortName, boolean registeredPlugin,
+                                              boolean pluginFileExists, boolean requiredPlugin) {
         return !StringUtils.isEmpty(pluginShortName)
                 && !isInternalUri(pluginShortName)
-                && (registeredPlugin || pluginFileExists);
+                && (registeredPlugin || pluginFileExists || requiredPlugin);
     }
 
     private boolean registeredPlugin(String pluginShortName) {

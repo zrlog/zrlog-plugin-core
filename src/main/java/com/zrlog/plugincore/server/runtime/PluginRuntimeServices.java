@@ -56,7 +56,7 @@ public final class PluginRuntimeServices {
 
     private static PluginRuntimeServices buildServices(PluginConfig pluginConfig, PluginHostConnection hostConnection) {
         Map<String, String> requiredPlugins = requiredPlugins();
-        PluginSessionRegistry sessionRegistry = new PluginSessionRegistry();
+        PluginSessionRegistry sessionRegistry = new PluginSessionRegistry(requiredPlugins);
         PluginProcessRuntime processRuntime = new PluginProcessRuntime(sessionRegistry, pluginConfig);
         PluginLifecycleService lifecycleService = new PluginLifecycleService(processRuntime, sessionRegistry);
         PluginMetadataBootstrapper metadataBootstrapper =

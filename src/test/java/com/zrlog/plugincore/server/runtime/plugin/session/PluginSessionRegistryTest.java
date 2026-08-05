@@ -2,13 +2,17 @@ package com.zrlog.plugincore.server.runtime.plugin.session;
 
 import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.message.Plugin;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import org.junit.Test;
 import sun.misc.Unsafe;
 
 import java.lang.reflect.Field;
 import java.nio.channels.Channel;
+import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -42,6 +46,25 @@ public class PluginSessionRegistryTest {
 
         assertNull(registry.getLocalSessionByPluginId("plugin-a"));
         assertFalse(testSession.channel.isOpen());
+    }
+
+    @Test
+    public void shouldStartRequiredPluginOnFirstSessionRequestWithoutRegisteredMetadata() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+            AtomicReference<Plugin> startedPlugin = new AtomicReference<>();
+            PluginSessionRegistry registry = new PluginSessionRegistry(session -> {
+            }, PluginSessionHeartbeat.disabled(), Collections.singletonMap("comment", "comment"), plugin -> {
+                startedPlugin.set(plugin);
+                return false;
+            });
+
+            assertTrue(registry.isRequiredPlugin("comment"));
+            assertNull(registry.getOrStartLocalSessionByPluginShortName("comment"));
+
+            assertNotNull(startedPlugin.get());
+            assertEquals("comment", startedPlugin.get().getId());
+            assertEquals("comment", startedPlugin.get().getShortName());
+        }
     }
 
     private TestSession testSession(String pluginId, String shortName) throws Exception {

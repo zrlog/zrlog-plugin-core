@@ -10,9 +10,13 @@ import com.zrlog.plugincore.server.vo.PluginVO;
 
 import java.nio.channels.Channel;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 public class PluginSessionRegistry {
@@ -23,9 +27,15 @@ public class PluginSessionRegistry {
     private final List<IOSession> localSessions = new CopyOnWriteArrayList<>();
     private final SessionStopMarker sessionStopMarker;
     private final PluginSessionHeartbeat heartbeat;
+    private final Map<String, String> requiredPlugins;
+    private final Function<Plugin, Boolean> pluginStarter;
 
     public PluginSessionRegistry() {
-        this(PluginRuntimeStates::markStoppedIfCurrent, null);
+        this(Collections.emptyMap());
+    }
+
+    public PluginSessionRegistry(Map<String, String> requiredPlugins) {
+        this(PluginRuntimeStates::markStoppedIfCurrent, null, requiredPlugins, PluginRuntimeStates::ensureStarted);
     }
 
     PluginSessionRegistry(SessionStopMarker sessionStopMarker) {
@@ -33,7 +43,14 @@ public class PluginSessionRegistry {
     }
 
     PluginSessionRegistry(SessionStopMarker sessionStopMarker, PluginSessionHeartbeat heartbeat) {
+        this(sessionStopMarker, heartbeat, Collections.emptyMap(), PluginRuntimeStates::ensureStarted);
+    }
+
+    PluginSessionRegistry(SessionStopMarker sessionStopMarker, PluginSessionHeartbeat heartbeat,
+                          Map<String, String> requiredPlugins, Function<Plugin, Boolean> pluginStarter) {
         this.sessionStopMarker = sessionStopMarker == null ? PluginRuntimeStates::markStoppedIfCurrent : sessionStopMarker;
+        this.requiredPlugins = requiredPlugins == null ? Collections.emptyMap() : new HashMap<>(requiredPlugins);
+        this.pluginStarter = pluginStarter == null ? PluginRuntimeStates::ensureStarted : pluginStarter;
         this.heartbeat = heartbeat == null
                 ? PluginSessionHeartbeat.active(this::getAllLocalSessions, this::closeLocalSession)
                 : heartbeat;
@@ -91,17 +108,38 @@ public class PluginSessionRegistry {
             if (session != null) {
                 return session;
             }
-            PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginShortName);
-            if (pluginVO == null || pluginVO.getPlugin() == null) {
+            Plugin plugin = pluginForStart(pluginShortName);
+            if (plugin == null) {
                 return null;
             }
-            try (PluginLogContext.Scope pluginScope = PluginLogContext.open(pluginVO.getPlugin())) {
-                if (!PluginRuntimeStates.ensureStarted(pluginVO.getPlugin())) {
+            try (PluginLogContext.Scope pluginScope = PluginLogContext.open(plugin)) {
+                if (!pluginStarter.apply(plugin)) {
                     return null;
                 }
-                return getLocalSessionByPluginId(pluginVO.getPlugin().getId());
+                IOSession startedSession = getLocalSessionByPluginId(plugin.getId());
+                return startedSession == null ? getLocalSessionByPluginShortName(pluginShortName) : startedSession;
             }
         }
+    }
+
+    public boolean isRequiredPlugin(String pluginShortName) {
+        return !StringUtils.isEmpty(pluginShortName) && requiredPlugins.containsKey(pluginShortName);
+    }
+
+    private Plugin pluginForStart(String pluginShortName) {
+        PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginShortName);
+        if (pluginVO != null && pluginVO.getPlugin() != null) {
+            return pluginVO.getPlugin();
+        }
+        String pluginId = requiredPlugins.get(pluginShortName);
+        if (StringUtils.isEmpty(pluginId)) {
+            return null;
+        }
+        Plugin plugin = new Plugin();
+        plugin.setId(pluginId);
+        plugin.setShortName(pluginShortName);
+        plugin.setName(pluginShortName);
+        return plugin;
     }
 
     public IOSession getLocalSessionByPluginId(String pluginId) {
