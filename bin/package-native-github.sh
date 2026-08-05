@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 basePath=${1}
 packageMavenArgs=("${@:2}")
