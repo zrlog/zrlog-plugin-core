@@ -34,7 +34,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Build and upload binary
+      - name: Build binary
+        id: package
         run: |
           bash -e bin/package-native-github.sh /tmp/download/plugin/core/faas -Dmysql-scope='provided'
+      - name: Process Linux binary
+        uses: 94fzb/zrlog/.github/actions/process-artifact@11868b0b0f606f19367e69f839cddff3abf1747e
+        with:
+          artifact-file: ${{ steps.package.outputs.artifact_file }}
+          artifact-name: ${{ steps.package.outputs.artifact_name }}
+          artifact-version: ${{ steps.package.outputs.artifact_version }}
+          artifact-architecture: ${{ steps.package.outputs.artifact_architecture }}
+          service-url: https://webdav.zrlog.com/artifact
+          service-token: ${{ secrets.ARTIFACT_SERVICE_TOKEN }}
+      - name: Upload binary
+        run: |
           bash -e bin/upload-bin.sh ${{ secrets.SECRET_ID }} ${{ secrets.SECRET_KEY }} ${{ secrets.BUCKET }} /tmp/download plugin ${{ secrets.HOST }}
