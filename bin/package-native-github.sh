@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -eo pipefail
-
 basePath=${1}
 packageMavenArgs=("${@:2}")
 agentMavenArgs=()
