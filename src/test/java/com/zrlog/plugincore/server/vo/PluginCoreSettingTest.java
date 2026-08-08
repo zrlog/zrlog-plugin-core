@@ -35,7 +35,33 @@ public class PluginCoreSettingTest {
         assertEquals(Boolean.TRUE, setting.getRuntime().getAutoDownloadMissingPluginFileEnabled());
         assertEquals(Boolean.TRUE, setting.getRuntime().getIdleStopEnabled());
         assertEquals(Long.valueOf(300L), setting.getRuntime().getIdleTimeoutSeconds());
-        assertEquals(Long.valueOf(30L), setting.getRuntime().getIdleScanIntervalSeconds());
+        assertEquals(Long.valueOf(300L), setting.getRuntime().getIdleScanIntervalSeconds());
+        assertEquals(Long.valueOf(4L), setting.getRuntime().getMaxRunningPlugins());
+        assertEquals(Long.valueOf(2L), setting.getRuntime().getMaxConcurrentStarts());
+        assertEquals(Long.valueOf(30L), setting.getRuntime().getStartFailureBackoffSeconds());
+    }
+
+    @Test
+    public void shouldBoundRuntimeCapacitySettings() {
+        PluginCoreSetting setting = new PluginCoreSetting();
+
+        setting.getRuntime().setIdleTimeoutSeconds(Long.MAX_VALUE);
+        setting.getRuntime().setIdleScanIntervalSeconds(5L);
+        setting.getRuntime().setMaxRunningPlugins(Long.MAX_VALUE);
+        setting.getRuntime().setMaxConcurrentStarts(0L);
+        setting.getRuntime().setStartFailureBackoffSeconds(0L);
+
+        assertEquals(Long.valueOf(86400L), setting.getRuntime().getIdleTimeoutSeconds());
+        assertEquals(Long.valueOf(60L), setting.getRuntime().getIdleScanIntervalSeconds());
+        assertEquals(Long.valueOf(32L), setting.getRuntime().getMaxRunningPlugins());
+        assertEquals(Long.valueOf(1L), setting.getRuntime().getMaxConcurrentStarts());
+        assertEquals(Long.valueOf(1L), setting.getRuntime().getStartFailureBackoffSeconds());
+
+        setting.getRuntime().setIdleScanIntervalSeconds(61L);
+        assertEquals(Long.valueOf(120L), setting.getRuntime().getIdleScanIntervalSeconds());
+
+        setting.getRuntime().setIdleScanIntervalSeconds(421L);
+        assertEquals(Long.valueOf(600L), setting.getRuntime().getIdleScanIntervalSeconds());
     }
 
     @Test

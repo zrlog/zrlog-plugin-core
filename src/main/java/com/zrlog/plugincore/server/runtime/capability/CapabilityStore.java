@@ -6,6 +6,7 @@ import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugin.common.PluginExecutionTimeouts;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -77,6 +78,16 @@ public class CapabilityStore {
             }
         }
         throw new IllegalStateException("Failed to replace plugin capabilities due to concurrent modification");
+    }
+
+    public void validatePluginCapabilitiesReplacement(String pluginId,
+                                                      List<String> pluginNames,
+                                                      List<PluginCapability> capabilities) {
+        CapabilityDocumentSnapshot snapshot = loadSnapshot();
+        CapabilityMutationResult result = replacePluginCapabilityItems(
+                snapshot.getDocument().getItems(), pluginId, pluginNames, capabilities);
+        snapshot.getDocument().setItems(result.getItems());
+        documentJson(snapshot.getDocument());
     }
 
     private CapabilityMutationResult replacePluginCapabilityItems(List<PluginCapability> currentItems,
@@ -179,10 +190,10 @@ public class CapabilityStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        CapabilityDocument document = gson.fromJson(json.get(), CapabilityDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<>());
-        }
+        PersistentJsonLimits.requireUtf8Length("Capability document", json.get(),
+                PersistentJsonLimits.MAX_CAPABILITY_DOCUMENT_BYTES);
+        CapabilityDocument document = normalizeDocument(gson.fromJson(json.get(), CapabilityDocument.class));
+        validateDocumentItemCount(document);
         return document;
     }
 
@@ -204,10 +215,41 @@ public class CapabilityStore {
     }
 
     private String documentJson(CapabilityDocument document) {
+        document = normalizeDocument(document);
+        validateDocumentItemCount(document);
         document.setSchema(KEY);
         document.setVersion(1);
         document.setUpdatedAt(RuntimeDates.nowString());
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Capability document", json,
+                PersistentJsonLimits.MAX_CAPABILITY_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private void validateDocumentItemCount(CapabilityDocument document) {
+        if (document.getItems().size() > PersistentJsonLimits.MAX_CAPABILITY_ENTRIES) {
+            throw new IllegalArgumentException("Capability document item count exceeds "
+                    + PersistentJsonLimits.MAX_CAPABILITY_ENTRIES);
+        }
+    }
+
+    private CapabilityDocument normalizeDocument(CapabilityDocument document) {
+        if (document == null) {
+            document = new CapabilityDocument();
+        }
+        List<PluginCapability> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<>());
+            return document;
+        }
+        List<PluginCapability> items = new ArrayList<>(currentItems.size());
+        for (PluginCapability capability : currentItems) {
+            if (capability != null) {
+                items.add(capability);
+            }
+        }
+        document.setItems(items);
+        return document;
     }
 
     public static boolean canGenerateLegacyCapability(String serviceName) {

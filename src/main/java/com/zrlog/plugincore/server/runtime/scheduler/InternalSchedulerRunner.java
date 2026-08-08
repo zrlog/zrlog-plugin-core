@@ -23,17 +23,19 @@ public class InternalSchedulerRunner {
     private static final long DEFAULT_TICK_INTERVAL_MILLIS = TimeUnit.MINUTES.toMillis(1);
     private static final Logger LOGGER = LoggerUtil.getLogger(InternalSchedulerRunner.class);
     private static final AtomicBoolean STARTED = new AtomicBoolean(false);
+    private static final AtomicBoolean SHUTDOWN = new AtomicBoolean(false);
     private static final AtomicBoolean TICKING = new AtomicBoolean(false);
+    private static ScheduledExecutorService executorService;
 
-    public static void start() {
-        if (!STARTED.compareAndSet(false, true)) {
+    public static synchronized void start() {
+        if (SHUTDOWN.get() || !STARTED.compareAndSet(false, true)) {
             return;
         }
         if (EnvKit.isFaaSMode()) {
             LOGGER.info("Faas mode, skip internal scheduler");
             return;
         }
-        ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        executorService = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(runnable, "zrlog-plugin-scheduler");
             thread.setDaemon(true);
             return thread;
@@ -46,13 +48,23 @@ public class InternalSchedulerRunner {
                 + ", firstAlignedDelayMillis=" + initialDelayMillis);
     }
 
+    public static synchronized void shutdown() {
+        if (!SHUTDOWN.compareAndSet(false, true)) {
+            return;
+        }
+        if (executorService != null) {
+            executorService.shutdownNow();
+            executorService = null;
+        }
+    }
+
     static long millisUntilNextTick(ZonedDateTime now) {
         ZonedDateTime nextMinute = now.plusMinutes(1).withSecond(0).withNano(0);
         return Math.max(1L, Duration.between(now, nextMinute).toMillis());
     }
 
     private static void safeTick() {
-        if (!TICKING.compareAndSet(false, true)) {
+        if (SHUTDOWN.get() || !TICKING.compareAndSet(false, true)) {
             return;
         }
         try {

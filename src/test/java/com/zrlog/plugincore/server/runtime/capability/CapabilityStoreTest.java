@@ -32,6 +32,30 @@ public class CapabilityStoreTest {
     }
 
     @Test
+    public void shouldNormalizeNullCapabilityDocumentsAndItems() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        kvStore.put(CapabilityStore.KEY, "null");
+        CapabilityStore store = new CapabilityStore(kvStore);
+
+        assertEquals(0, store.listAll().size());
+
+        kvStore.put(CapabilityStore.KEY,
+                "{\"items\":[null,{\"pluginId\":\"plugin-a\",\"key\":\"task.run\"},null]}");
+        CapabilityDocument loaded = store.loadDocument();
+        assertEquals(1, loaded.getItems().size());
+        assertEquals("task.run", loaded.getItems().get(0).getKey());
+
+        store.saveDocument(loaded);
+        CapabilityDocument persisted = new Gson().fromJson(
+                kvStore.get(CapabilityStore.KEY).get(), CapabilityDocument.class);
+        assertEquals(1, persisted.getItems().size());
+
+        store.saveDocument(null);
+        persisted = new Gson().fromJson(kvStore.get(CapabilityStore.KEY).get(), CapabilityDocument.class);
+        assertEquals(0, persisted.getItems().size());
+    }
+
+    @Test
     public void shouldSkipRegisterWriteWhenCapabilityIsUnchanged() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         CapabilityStore store = new CapabilityStore(kvStore);

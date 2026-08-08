@@ -7,6 +7,8 @@ import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 public class PluginNioServer {
 
     private final ISocketServer socketServer;
+    private boolean started;
+    private boolean stopped;
 
     public PluginNioServer() {
         this(new PluginCoreSocketServer());
@@ -20,15 +22,26 @@ public class PluginNioServer {
         this.socketServer = socketServer;
     }
 
-    public boolean start() {
+    public synchronized boolean start() {
+        if (stopped) {
+            return false;
+        }
+        if (started) {
+            return true;
+        }
         if (!socketServer.create()) {
             return false;
         }
+        started = true;
         new Thread(socketServer::listen, "zrlog-plugin-socket").start();
         return true;
     }
 
-    public void stop(String reason) {
+    public synchronized void stop(String reason) {
+        if (stopped) {
+            return;
+        }
+        stopped = true;
         socketServer.destroy(reason);
     }
 }

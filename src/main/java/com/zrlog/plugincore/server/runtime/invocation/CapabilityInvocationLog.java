@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime.invocation;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+
 public class CapabilityInvocationLog {
 
     private String id;
@@ -117,6 +119,6 @@ public class CapabilityInvocationLog {
     }
 
     public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
+        this.errorMessage = RuntimeTextLimits.truncateErrorMessage(errorMessage);
     }
 }

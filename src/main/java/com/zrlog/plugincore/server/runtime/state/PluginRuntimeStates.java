@@ -300,7 +300,7 @@ public final class PluginRuntimeStates {
 
     public static IOSession getOrStartLocalSessionByPluginId(String pluginId) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, null, null)) {
-            IOSession session = PluginSessions.getLocalSessionByPluginId(pluginId);
+            IOSession session = PluginSessions.claimReadyLocalSessionByPluginId(pluginId);
             if (session != null) {
                 return session;
             }
@@ -308,7 +308,7 @@ public final class PluginRuntimeStates {
             if (!started) {
                 return null;
             }
-            return PluginSessions.getLocalSessionByPluginId(pluginId);
+            return PluginSessions.claimReadyLocalSessionByPluginId(pluginId);
         }
     }
 

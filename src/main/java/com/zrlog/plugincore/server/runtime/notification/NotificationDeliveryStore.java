@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,7 @@ public class NotificationDeliveryStore {
 
     private List<NotificationDelivery> appendItems(List<NotificationDelivery> currentItems, NotificationDelivery delivery) {
         List<NotificationDelivery> items = new ArrayList<>(currentItems);
+        normalizeDelivery(delivery);
         items.add(delivery);
         while (items.size() > MAX_ITEMS) {
             items.remove(0);
@@ -61,11 +64,9 @@ public class NotificationDeliveryStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        NotificationDeliveryDocument document = gson.fromJson(json.get(), NotificationDeliveryDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<>());
-        }
-        return document;
+        PersistentJsonLimits.requireUtf8Length("Notification delivery document", json.get(),
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return normalizeDocument(gson.fromJson(json.get(), NotificationDeliveryDocument.class));
     }
 
     public void saveDocument(NotificationDeliveryDocument document) {
@@ -86,10 +87,43 @@ public class NotificationDeliveryStore {
     }
 
     private String documentJson(NotificationDeliveryDocument document) {
+        document = normalizeDocument(document);
         document.setSchema(KEY);
         document.setVersion(2);
         document.setUpdatedAt(RuntimeDates.nowString());
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Notification delivery document", json,
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private NotificationDeliveryDocument normalizeDocument(NotificationDeliveryDocument document) {
+        if (document == null) {
+            document = new NotificationDeliveryDocument();
+        }
+        List<NotificationDelivery> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<>());
+            return document;
+        }
+        int fromIndex = Math.max(0, currentItems.size() - MAX_ITEMS);
+        List<NotificationDelivery> items = new ArrayList<>(currentItems.size() - fromIndex);
+        for (int i = fromIndex; i < currentItems.size(); i++) {
+            NotificationDelivery delivery = currentItems.get(i);
+            if (delivery == null) {
+                continue;
+            }
+            normalizeDelivery(delivery);
+            items.add(delivery);
+        }
+        document.setItems(items);
+        return document;
+    }
+
+    private void normalizeDelivery(NotificationDelivery delivery) {
+        if (delivery != null) {
+            delivery.setErrorMessage(RuntimeTextLimits.truncateErrorMessage(delivery.getErrorMessage()));
+        }
     }
 
     public static class NotificationDeliveryDocumentSnapshot {

@@ -1,5 +1,9 @@
 package com.zrlog.plugincore.server.runtime.state;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+
+import java.util.Set;
+
 public class PluginRuntimeInstanceState {
 
     private String instanceId;
@@ -13,6 +17,7 @@ public class PluginRuntimeInstanceState {
     private Long heartbeatAt;
     private Long leaseExpiresAt;
     private Integer activeInvocationCount;
+    private Set<String> activeInvocationIds;
     private String lastError;
 
     public String getInstanceId() {
@@ -103,11 +108,19 @@ public class PluginRuntimeInstanceState {
         this.activeInvocationCount = activeInvocationCount;
     }
 
+    public Set<String> getActiveInvocationIds() {
+        return activeInvocationIds;
+    }
+
+    public void setActiveInvocationIds(Set<String> activeInvocationIds) {
+        this.activeInvocationIds = activeInvocationIds;
+    }
+
     public String getLastError() {
         return lastError;
     }
 
     public void setLastError(String lastError) {
-        this.lastError = lastError;
+        this.lastError = RuntimeTextLimits.truncateErrorMessage(lastError);
     }
 }

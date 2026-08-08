@@ -60,24 +60,26 @@ public class PluginLifecycleService {
         }
     }
 
-    public void stopPlugin(String pluginShortName) {
+    public void markPluginReady(IOSession session) {
+        if (session == null || session.getPlugin() == null) {
+            return;
+        }
+        processRuntime.markReadyIfCurrent(session.getPlugin().getId(),
+                sessionRegistry.runtimeInstanceId(session), sessionRegistry.processId(session));
+    }
+
+    public boolean stopPlugin(String pluginShortName) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(null, pluginShortName, pluginShortName)) {
-            PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginShortName);
-            if (pluginVO != null && pluginVO.getPlugin() != null) {
-                try (PluginLogContext.Scope pluginScope = PluginLogContext.open(pluginVO.getPlugin())) {
-                    sessionRegistry.closeLocalSessionsByPluginId(pluginVO.getPlugin().getId());
-                }
-            }
-            sessionRegistry.closeLocalSessionsByPluginShortName(pluginShortName);
-            processRuntime.destroy(pluginShortName);
+            return processRuntime.destroy(pluginShortName);
         }
     }
 
-    public void deletePlugin(String pluginShortName) {
+    public boolean deletePlugin(String pluginShortName) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(null, pluginShortName, pluginShortName)) {
             PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginShortName);
-            sessionRegistry.closeLocalSessionsByPluginShortName(pluginShortName);
-            processRuntime.destroy(pluginShortName);
+            if (!processRuntime.destroy(pluginShortName)) {
+                return false;
+            }
             if (pluginVO != null && pluginVO.getPlugin() != null) {
                 try (PluginLogContext.Scope pluginScope = PluginLogContext.open(pluginVO.getPlugin())) {
                     String pluginId = pluginVO.getPlugin().getId();
@@ -89,6 +91,7 @@ public class PluginLifecycleService {
                 }
             }
             PluginCoreDAO.getInstance().removePluginByShortName(pluginShortName);
+            return true;
         }
     }
 
@@ -114,7 +117,9 @@ public class PluginLifecycleService {
                 stalePluginIds.add(oldSession.getPlugin().getId());
             }
             for (String stalePluginId : stalePluginIds) {
-                processRuntime.destroyByPluginId(stalePluginId, shortName);
+                if (!processRuntime.destroyByPluginId(stalePluginId, shortName)) {
+                    throw new IllegalStateException("Unable to stop the previous plugin process for " + shortName);
+                }
             }
         }
     }

@@ -6,13 +6,18 @@ import com.zrlog.plugin.common.CronParseException;
 import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.runtime.InMemoryRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityStore;
+import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import org.junit.Test;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -241,6 +246,28 @@ public class RuntimeAutomationServiceTest {
     }
 
     @Test
+    public void shouldCompareNestedPayloadNumbersByValueWhenSaving() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        capabilityStore.register(capability("plugin-a", "reminder.scanDueTasks", "scheduler"));
+        RuntimeAutomationService service = service(kvStore, capabilityStore);
+        PluginAutomation input = automation(null);
+        Map<String, Object> nested = new HashMap<>();
+        nested.put("attempts", 2L);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("limits", Arrays.asList(1L, nested));
+        input.setPayload(payload);
+        PluginAutomation saved = service.save(input, now());
+        kvStore.resetCounts();
+
+        PluginAutomation update = automation(saved.getId());
+        update.setPayload(payload);
+        service.save(update, now());
+
+        assertEquals(0, kvStore.putCount(AutomationStore.KEY));
+    }
+
+    @Test
     public void shouldReuseExistingAutomationWhenIdIsMissingForSameCapability() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         CapabilityStore capabilityStore = new CapabilityStore(kvStore);
@@ -312,6 +339,111 @@ public class RuntimeAutomationServiceTest {
         assertTrue(service.delete(saved.getId()));
         assertFalse(service.delete(saved.getId()));
         assertEquals(0, service.list().size());
+    }
+
+    @Test
+    public void shouldSaveRuntimeMaintenanceIntervalAndUpdateRuntimeSetting() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        AtomicReference<PluginRuntimeSetting> persistedSetting = new AtomicReference<>();
+        RuntimeAutomationService service = new RuntimeAutomationService(
+                new AutomationStore(kvStore), capabilityStore, new BasicCronParser(),
+                PluginRuntimeSetting::new, persistedSetting::set);
+        PluginAutomation automation = new PluginAutomation();
+        automation.setId(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID);
+        automation.setCron("*/5 * * * *");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("idleScanIntervalSeconds", 600L);
+        automation.setPayload(payload);
+
+        PluginAutomation saved = service.save(automation, now());
+
+        assertEquals("*/10 * * * *", saved.getCron());
+        assertEquals(Long.valueOf(600L), saved.getPayload().get("idleScanIntervalSeconds"));
+        assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(10))), saved.getNextRunAt());
+        assertNotNull(persistedSetting.get());
+        assertEquals(Long.valueOf(600L), persistedSetting.get().getIdleScanIntervalSeconds());
+
+        persistedSetting.set(null);
+        service.save(saved, now());
+        assertNotNull(persistedSetting.get());
+        assertEquals(Long.valueOf(600L), persistedSetting.get().getIdleScanIntervalSeconds());
+    }
+
+    @Test
+    public void shouldPreserveLegacyCustomRuntimeMaintenanceCronWhenSaved() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        RuntimeAutomationService service = new RuntimeAutomationService(
+                new AutomationStore(kvStore), capabilityStore, new BasicCronParser(),
+                PluginRuntimeSetting::new, ignored -> {});
+        PluginAutomation automation = new PluginAutomation();
+        automation.setId(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID);
+        automation.setCron("*/7 * * * *");
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("onDemandEnabled", Boolean.FALSE);
+        automation.setPayload(payload);
+
+        PluginAutomation saved = service.save(automation, now());
+
+        assertEquals("*/7 * * * *", saved.getCron());
+        assertEquals(Boolean.FALSE, saved.getPayload().get("onDemandEnabled"));
+        assertFalse(saved.getPayload().containsKey("idleScanIntervalSeconds"));
+    }
+
+    @Test
+    public void shouldSaveRuntimeMaintenanceAndSynchronizeAllRuntimeSettings() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AtomicReference<PluginRuntimeSetting> persistedSetting = new AtomicReference<>();
+        AtomicInteger updateCount = new AtomicInteger();
+        RuntimeAutomationService service = new RuntimeAutomationService(
+                new AutomationStore(kvStore), new CapabilityStore(kvStore), new BasicCronParser(),
+                PluginRuntimeSetting::new, setting -> {
+                    persistedSetting.set(setting);
+                    updateCount.incrementAndGet();
+                });
+        PluginRuntimeSetting requested = runtimeSetting();
+
+        PluginAutomation saved = service.saveRuntimeMaintenance(requested, now());
+
+        assertEquals(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID, saved.getId());
+        assertEquals("*/10 * * * *", saved.getCron());
+        assertEquals(RuntimeSystemAutomations.runtimePayload(requested), saved.getPayload());
+        assertRuntimeSettingEquals(requested, persistedSetting.get());
+        assertEquals(1, updateCount.get());
+
+        kvStore.resetCounts();
+        persistedSetting.set(null);
+        PluginAutomation unchanged = service.saveRuntimeMaintenance(requested, now());
+
+        assertEquals(saved.getPayload(), unchanged.getPayload());
+        assertEquals(0, kvStore.putCount(AutomationStore.KEY));
+        assertRuntimeSettingEquals(requested, persistedSetting.get());
+        assertEquals(2, updateCount.get());
+    }
+
+    @Test
+    public void shouldUpdateRuntimeSettingOnlyAfterRuntimeMaintenanceCasSucceeds() {
+        PluginAutomation external = externalAutomation("external");
+        StaleAutomationKvStore kvStore = new StaleAutomationKvStore(automationDocumentJson(external));
+        AtomicInteger updateCount = new AtomicInteger();
+        AtomicReference<PluginRuntimeSetting> persistedSetting = new AtomicReference<>();
+        RuntimeAutomationService service = new RuntimeAutomationService(
+                new AutomationStore(kvStore), new CapabilityStore(kvStore), new BasicCronParser(),
+                PluginRuntimeSetting::new, setting -> {
+                    persistedSetting.set(setting);
+                    updateCount.incrementAndGet();
+                });
+        PluginRuntimeSetting requested = runtimeSetting();
+
+        service.saveRuntimeMaintenance(requested, now());
+
+        assertEquals(2, kvStore.getAutomationCompareAndSetCount());
+        assertEquals(1, updateCount.get());
+        assertRuntimeSettingEquals(requested, persistedSetting.get());
+        assertEquals(2, service.list().size());
+        assertTrue(service.list().stream().anyMatch(item -> "external".equals(item.getId())));
+        assertTrue(service.list().stream().anyMatch(RuntimeSystemAutomations::isRuntimeMaintenance));
     }
 
     @Test
@@ -398,6 +530,31 @@ public class RuntimeAutomationServiceTest {
         capability.setExposure(Arrays.asList(exposure));
         capability.setEnabled(Boolean.TRUE);
         return capability;
+    }
+
+    private PluginRuntimeSetting runtimeSetting() {
+        PluginRuntimeSetting setting = new PluginRuntimeSetting();
+        setting.setOnDemandEnabled(Boolean.TRUE);
+        setting.setAutoDownloadMissingPluginFileEnabled(Boolean.FALSE);
+        setting.setIdleStopEnabled(Boolean.TRUE);
+        setting.setIdleTimeoutSeconds(420L);
+        setting.setIdleScanIntervalSeconds(600L);
+        setting.setMaxRunningPlugins(3L);
+        setting.setMaxConcurrentStarts(1L);
+        setting.setStartFailureBackoffSeconds(45L);
+        return setting;
+    }
+
+    private void assertRuntimeSettingEquals(PluginRuntimeSetting expected, PluginRuntimeSetting actual) {
+        assertNotNull(actual);
+        assertEquals(expected.getOnDemandEnabled(), actual.getOnDemandEnabled());
+        assertEquals(expected.getAutoDownloadMissingPluginFileEnabled(), actual.getAutoDownloadMissingPluginFileEnabled());
+        assertEquals(expected.getIdleStopEnabled(), actual.getIdleStopEnabled());
+        assertEquals(expected.getIdleTimeoutSeconds(), actual.getIdleTimeoutSeconds());
+        assertEquals(expected.getIdleScanIntervalSeconds(), actual.getIdleScanIntervalSeconds());
+        assertEquals(expected.getMaxRunningPlugins(), actual.getMaxRunningPlugins());
+        assertEquals(expected.getMaxConcurrentStarts(), actual.getMaxConcurrentStarts());
+        assertEquals(expected.getStartFailureBackoffSeconds(), actual.getStartFailureBackoffSeconds());
     }
 
     private void assertNextRunAt(Long nextRunAt, int hour, int minute) {

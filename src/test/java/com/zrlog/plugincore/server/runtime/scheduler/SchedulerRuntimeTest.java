@@ -24,11 +24,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
@@ -204,6 +208,44 @@ public class SchedulerRuntimeTest {
     }
 
     @Test
+    public void shouldBoundEachTickAndContinueWithOldestDueAutomations() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AutomationStore automationStore = new AutomationStore(kvStore);
+        AutomationRunStore runStore = new AutomationRunStore(kvStore);
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        int automationCount = SchedulerRuntime.maxTickTasks() + 16;
+        assertEquals(64, SchedulerRuntime.maxTickTasks());
+        List<PluginAutomation> automations = dueAutomationsWithDistinctLockStripes(automationCount);
+        automationStore.saveAll(automations);
+        Set<String> invokedKeys = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        AtomicInteger invocationCount = new AtomicInteger();
+        SchedulerRuntime runtime = runtimeWithoutTracking(automationStore, runStore, capabilityStore,
+                recordingInvoker(invokedKeys, invocationCount));
+
+        SchedulerTickResult firstTick = runtime.tick(now());
+
+        assertEquals(SchedulerRuntime.maxTickTasks(), firstTick.getExecutedCount());
+        assertEquals(SchedulerRuntime.maxTickTasks(), invocationCount.get());
+        Set<String> remainingKeys = automationKeys(automations);
+        remainingKeys.removeAll(invokedKeys);
+        assertEquals(16, remainingKeys.size());
+        for (PluginAutomation current : automationStore.list()) {
+            if (remainingKeys.contains(executionKey(current))) {
+                assertTrue(current.getNextRunAt() <= SchedulerTimes.millis(now()));
+                assertTrue(current.getLeaseOwner() == null);
+            }
+        }
+
+        invokedKeys.clear();
+        invocationCount.set(0);
+        SchedulerTickResult secondTick = runtime.tick(now().plusMinutes(1));
+
+        assertTrue(secondTick.getExecutedCount() >= remainingKeys.size());
+        assertTrue(invocationCount.get() <= SchedulerRuntime.maxTickTasks());
+        assertTrue(invokedKeys.containsAll(remainingKeys));
+    }
+
+    @Test
     public void shouldRejectRunNowWhenSameCapabilityIsRunning() throws Exception {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         AutomationStore automationStore = new AutomationStore(kvStore);
@@ -238,12 +280,29 @@ public class SchedulerRuntimeTest {
     }
 
     @Test
+    public void shouldUseFixedExecutionLockStripes() {
+        assertEquals(256, SchedulerRuntime.executionLockStripeCount());
+        assertEquals(SchedulerRuntime.executionLockIndex("plugin-a:capability-a"),
+                SchedulerRuntime.executionLockIndex("plugin-a:capability-a"));
+        for (int i = 0; i < 10000; i++) {
+            int index = SchedulerRuntime.executionLockIndex("plugin-" + i + ":capability-" + i);
+            assertTrue(index >= 0);
+            assertTrue(index < SchedulerRuntime.executionLockStripeCount());
+        }
+        assertEquals(256, SchedulerRuntime.executionLockStripeCount());
+    }
+
+    @Test
     public void shouldNormalizeRuntimeMaintenanceLoadStrategy() {
         Map<String, Object> payload = new HashMap<>();
         payload.put("onDemandEnabled", Boolean.FALSE);
         payload.put("autoDownloadMissingPluginFileEnabled", Boolean.FALSE);
         payload.put("idleStopEnabled", Boolean.TRUE);
         payload.put("idleTimeoutSeconds", 300L);
+        payload.put("idleScanIntervalSeconds", 61L);
+        payload.put("maxRunningPlugins", 100L);
+        payload.put("maxConcurrentStarts", 0L);
+        payload.put("startFailureBackoffSeconds", 0L);
 
         PluginRuntimeSetting setting = RuntimeSystemAutomations.runtimeSettingFromPayload(payload);
         Map<String, Object> normalizedPayload = RuntimeSystemAutomations.runtimePayload(setting);
@@ -251,9 +310,17 @@ public class SchedulerRuntimeTest {
         assertFalse(setting.getOnDemandEnabled());
         assertFalse(setting.getAutoDownloadMissingPluginFileEnabled());
         assertFalse(setting.getIdleStopEnabled());
+        assertEquals(Long.valueOf(120L), setting.getIdleScanIntervalSeconds());
+        assertEquals(Long.valueOf(32L), setting.getMaxRunningPlugins());
+        assertEquals(Long.valueOf(1L), setting.getMaxConcurrentStarts());
+        assertEquals(Long.valueOf(1L), setting.getStartFailureBackoffSeconds());
         assertEquals(Boolean.FALSE, normalizedPayload.get("onDemandEnabled"));
         assertEquals(Boolean.FALSE, normalizedPayload.get("autoDownloadMissingPluginFileEnabled"));
         assertEquals(Boolean.FALSE, normalizedPayload.get("idleStopEnabled"));
+        assertEquals(Long.valueOf(120L), normalizedPayload.get("idleScanIntervalSeconds"));
+        assertEquals(Long.valueOf(32L), normalizedPayload.get("maxRunningPlugins"));
+        assertEquals(Long.valueOf(1L), normalizedPayload.get("maxConcurrentStarts"));
+        assertEquals(Long.valueOf(1L), normalizedPayload.get("startFailureBackoffSeconds"));
     }
 
     @Test
@@ -271,12 +338,98 @@ public class SchedulerRuntimeTest {
         ArrayList<PluginAutomation> automations = new ArrayList<>();
         automations.add(automation);
 
+        PluginRuntimeSetting setting = new PluginRuntimeSetting();
+        setting.setOnDemandEnabled(Boolean.FALSE);
         boolean changed = RuntimeSystemAutomations.ensureRuntimeMaintenance(
-                automations, new PluginRuntimeSetting(), new BasicCronParser(), now());
+                automations, setting, new BasicCronParser(), now());
 
         assertTrue(changed);
         assertTrue(automation.getEnabled());
         assertFalse((Boolean) automation.getPayload().get("idleStopEnabled"));
+    }
+
+    @Test
+    public void shouldCreateRuntimeMaintenanceFromConfiguredInterval() {
+        ArrayList<PluginAutomation> automations = new ArrayList<>();
+        PluginRuntimeSetting setting = new PluginRuntimeSetting();
+        setting.setIdleScanIntervalSeconds(421L);
+
+        boolean changed = RuntimeSystemAutomations.ensureRuntimeMaintenance(
+                automations, setting, new BasicCronParser(), now());
+
+        assertTrue(changed);
+        assertEquals(1, automations.size());
+        assertEquals("*/10 * * * *", automations.get(0).getCron());
+        assertEquals(Long.valueOf(600L), automations.get(0).getPayload().get("idleScanIntervalSeconds"));
+        assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(10))), automations.get(0).getNextRunAt());
+    }
+
+    @Test
+    public void shouldMigrateLegacyRuntimeMaintenanceCronWithoutChangingCadence() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("onDemandEnabled", Boolean.FALSE);
+        payload.put("autoDownloadMissingPluginFileEnabled", Boolean.FALSE);
+        payload.put("idleStopEnabled", Boolean.FALSE);
+        payload.put("idleTimeoutSeconds", 900L);
+        PluginAutomation automation = runtimeMaintenanceAutomation("*/15 * * * *", payload);
+        ArrayList<PluginAutomation> automations = new ArrayList<>();
+        automations.add(automation);
+
+        boolean changed = RuntimeSystemAutomations.ensureRuntimeMaintenance(
+                automations, new PluginRuntimeSetting(), new BasicCronParser(), now());
+
+        assertTrue(changed);
+        assertEquals("*/15 * * * *", automation.getCron());
+        assertEquals(Long.valueOf(900L), automation.getPayload().get("idleScanIntervalSeconds"));
+        assertEquals(Boolean.FALSE, automation.getPayload().get("onDemandEnabled"));
+        assertEquals(Boolean.FALSE, automation.getPayload().get("autoDownloadMissingPluginFileEnabled"));
+        assertEquals(Boolean.FALSE, automation.getPayload().get("idleStopEnabled"));
+        assertEquals(Long.valueOf(900L), automation.getPayload().get("idleTimeoutSeconds"));
+        assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(15))), automation.getNextRunAt());
+        assertFalse(RuntimeSystemAutomations.ensureRuntimeMaintenance(
+                automations, new PluginRuntimeSetting(), new BasicCronParser(), now()));
+    }
+
+    @Test
+    public void shouldPreserveUnsupportedLegacyRuntimeMaintenanceCron() {
+        PluginAutomation automation = runtimeMaintenanceAutomation("*/7 * * * *", new HashMap<>());
+        ArrayList<PluginAutomation> automations = new ArrayList<>();
+        automations.add(automation);
+
+        RuntimeSystemAutomations.ensureRuntimeMaintenance(
+                automations, new PluginRuntimeSetting(), new BasicCronParser(), now());
+
+        assertEquals("*/7 * * * *", automation.getCron());
+        assertFalse(automation.getPayload().containsKey("idleScanIntervalSeconds"));
+    }
+
+    @Test
+    public void shouldUseExplicitRuntimeMaintenanceIntervalAndRecomputeNextRun() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("idleScanIntervalSeconds", 600L);
+        PluginAutomation automation = runtimeMaintenanceAutomation("*/5 * * * *", payload);
+        automation.setNextRunAt(SchedulerTimes.millis(now().plusMinutes(5)));
+        ArrayList<PluginAutomation> automations = new ArrayList<>();
+        automations.add(automation);
+
+        RuntimeSystemAutomations.ensureRuntimeMaintenance(
+                automations, new PluginRuntimeSetting(), new BasicCronParser(), now());
+
+        assertEquals("*/10 * * * *", automation.getCron());
+        assertEquals(Long.valueOf(600L), automation.getPayload().get("idleScanIntervalSeconds"));
+        assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(10))), automation.getNextRunAt());
+    }
+
+    private PluginAutomation runtimeMaintenanceAutomation(String cron, Map<String, Object> payload) {
+        PluginAutomation automation = new PluginAutomation();
+        automation.setId(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID);
+        automation.setName("运行态维护");
+        automation.setPluginId(RuntimeSystemAutomations.SYSTEM_PLUGIN_ID);
+        automation.setCapabilityKey(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_KEY);
+        automation.setCron(cron);
+        automation.setEnabled(Boolean.TRUE);
+        automation.setPayload(payload);
+        return automation;
     }
 
     private SchedulerRuntime runtime(InMemoryRuntimeKvStore kvStore,
@@ -367,6 +520,48 @@ public class SchedulerRuntimeTest {
                 return result;
             }
         };
+    }
+
+    private CapabilityInvoker recordingInvoker(final Set<String> invokedKeys, final AtomicInteger invocationCount) {
+        return new CapabilityInvoker() {
+            @Override
+            public CapabilityInvokeResult invoke(String pluginId, String capabilityKey, Map<String, Object> payload, InvokeContext context) {
+                invokedKeys.add(pluginId + ":" + capabilityKey);
+                invocationCount.incrementAndGet();
+                CapabilityInvokeResult result = new CapabilityInvokeResult();
+                result.setSuccess(true);
+                return result;
+            }
+        };
+    }
+
+    private List<PluginAutomation> dueAutomationsWithDistinctLockStripes(int count) {
+        List<PluginAutomation> automations = new ArrayList<>();
+        Set<Integer> lockStripes = new HashSet<>();
+        for (int candidate = 0; automations.size() < count; candidate++) {
+            String pluginId = "plugin-" + candidate;
+            String capabilityKey = "task-" + candidate;
+            if (!lockStripes.add(SchedulerRuntime.executionLockIndex(pluginId + ":" + capabilityKey))) {
+                continue;
+            }
+            PluginAutomation automation = automation("automation-" + candidate, true, pluginId, capabilityKey);
+            automation.setCron("* * * * *");
+            automation.setNextRunAt(SchedulerTimes.millis(now()));
+            automations.add(automation);
+        }
+        return automations;
+    }
+
+    private Set<String> automationKeys(List<PluginAutomation> automations) {
+        Set<String> keys = new HashSet<>();
+        for (PluginAutomation automation : automations) {
+            keys.add(executionKey(automation));
+        }
+        return keys;
+    }
+
+    private String executionKey(PluginAutomation automation) {
+        return automation.getPluginId() + ":" + automation.getCapabilityKey();
     }
 
     private PluginAutomation automation(String id, boolean enabled) {

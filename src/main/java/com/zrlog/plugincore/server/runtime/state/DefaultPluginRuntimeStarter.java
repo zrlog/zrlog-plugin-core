@@ -42,6 +42,11 @@ public class DefaultPluginRuntimeStarter implements PluginRuntimeStarter {
     }
 
     @Override
+    public boolean isReady(String pluginId) {
+        return PluginSessions.isReadyByPluginId(pluginId);
+    }
+
+    @Override
     public Optional<PluginIdentity> findPlugin(String pluginId) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, null, null)) {
             for (PluginVO pluginVO : PluginCoreDAO.getInstance().getPluginVOs(pluginCore())) {
@@ -93,7 +98,33 @@ public class DefaultPluginRuntimeStarter implements PluginRuntimeStarter {
     }
 
     @Override
+    public int maxConcurrentStarts() {
+        return pluginCore().getSetting().getRuntime().getMaxConcurrentStarts().intValue();
+    }
+
+    @Override
+    public long startFailureBackoffMs() {
+        return pluginCore().getSetting().getRuntime().getStartFailureBackoffSeconds() * 1000L;
+    }
+
+    @Override
+    public boolean reclaimIdleCapacity(PluginIdentity identity) {
+        PluginCore pluginCore = pluginCore();
+        PluginRuntimeSetting runtimeSetting = pluginCore.getSetting().getRuntime();
+        if (!runtimeSetting.getOnDemandEnabled() || !runtimeSetting.getIdleStopEnabled()) {
+            return false;
+        }
+        return new PluginIdleStopRunner(pluginBootstrapService).reclaimOneIdlePluginForCapacity(
+                System.currentTimeMillis(), runtimeSetting, pluginCore, identity.getPluginId());
+    }
+
+    @Override
+    public boolean isStartViable(PluginIdentity identity) {
+        return pluginBootstrapService.isManagedProcessStartViable(identity.getPluginId(), identity.getPluginShortName());
+    }
+
+    @Override
     public void cleanupStartFailure(PluginIdentity identity) {
-        pluginBootstrapService.stopPlugin(identity.getPluginShortName());
+        pluginBootstrapService.stopPlugin(identity.getPluginId(), identity.getPluginShortName());
     }
 }

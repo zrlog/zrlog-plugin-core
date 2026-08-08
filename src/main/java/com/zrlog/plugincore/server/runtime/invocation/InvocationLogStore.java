@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,7 @@ public class InvocationLogStore {
 
     private List<CapabilityInvocationLog> appendItems(List<CapabilityInvocationLog> currentItems, CapabilityInvocationLog log) {
         List<CapabilityInvocationLog> items = new ArrayList<CapabilityInvocationLog>(currentItems);
+        normalizeLog(log);
         items.add(log);
         while (items.size() > MAX_ITEMS) {
             items.remove(0);
@@ -61,11 +64,9 @@ public class InvocationLogStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        InvocationLogDocument document = gson.fromJson(json.get(), InvocationLogDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<CapabilityInvocationLog>());
-        }
-        return document;
+        PersistentJsonLimits.requireUtf8Length("Invocation log document", json.get(),
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return normalizeDocument(gson.fromJson(json.get(), InvocationLogDocument.class));
     }
 
     public void saveDocument(InvocationLogDocument document) {
@@ -86,10 +87,43 @@ public class InvocationLogStore {
     }
 
     private String documentJson(InvocationLogDocument document) {
+        document = normalizeDocument(document);
         document.setSchema(KEY);
         document.setVersion(2);
         document.setUpdatedAt(RuntimeDates.nowString());
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Invocation log document", json,
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private InvocationLogDocument normalizeDocument(InvocationLogDocument document) {
+        if (document == null) {
+            document = new InvocationLogDocument();
+        }
+        List<CapabilityInvocationLog> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<CapabilityInvocationLog>());
+            return document;
+        }
+        int fromIndex = Math.max(0, currentItems.size() - MAX_ITEMS);
+        List<CapabilityInvocationLog> items = new ArrayList<CapabilityInvocationLog>(currentItems.size() - fromIndex);
+        for (int i = fromIndex; i < currentItems.size(); i++) {
+            CapabilityInvocationLog log = currentItems.get(i);
+            if (log == null) {
+                continue;
+            }
+            normalizeLog(log);
+            items.add(log);
+        }
+        document.setItems(items);
+        return document;
+    }
+
+    private void normalizeLog(CapabilityInvocationLog log) {
+        if (log != null) {
+            log.setErrorMessage(RuntimeTextLimits.truncateErrorMessage(log.getErrorMessage()));
+        }
     }
 
     public static class InvocationLogDocumentSnapshot {

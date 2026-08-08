@@ -4,6 +4,7 @@ package com.zrlog.plugincore.server.web.controller;
 import com.google.gson.Gson;
 import com.hibegin.http.server.web.Controller;
 import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.ResponseLease;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugin.common.LoggerUtil;
 import com.zrlog.plugin.common.PluginExecutionTimeouts;
@@ -118,19 +119,21 @@ public class PluginController extends Controller {
             stateService.markInvocationStart(pluginId, pluginName);
             try {
                 int msgId = session.requestService(name, request.decodeParamMap());
-                MsgPacket responseMsgPacket = session.getResponseMsgPacketByMsgId(msgId,
-                        PluginExecutionTimeouts.executionTimeout(serviceCapability == null ? null : serviceCapability.getTimeoutSeconds()));
-                if (responseMsgPacket == null) {
-                    errorMessage = "service " + name + " not response";
-                    getResponse().renderCode(500);
-                    return;
+                try (ResponseLease responseLease = session.getResponseLeaseByMsgId(msgId,
+                        PluginExecutionTimeouts.executionTimeout(serviceCapability == null ? null : serviceCapability.getTimeoutSeconds()))) {
+                    if (responseLease == null) {
+                        errorMessage = "service " + name + " not response";
+                        getResponse().renderCode(500);
+                        return;
+                    }
+                    MsgPacket responseMsgPacket = responseLease.getPacket();
+                    if (responseMsgPacket.getStatus() == MsgPacketStatus.RESPONSE_ERROR) {
+                        errorMessage = "service " + name + " response error";
+                    }
+                    getResponse().addHeader("Content-Type", "application/json");
+                    ByteArrayInputStream bin = new ByteArrayInputStream(responseMsgPacket.getData().array());
+                    getResponse().write(bin);
                 }
-                if (responseMsgPacket.getStatus() == MsgPacketStatus.RESPONSE_ERROR) {
-                    errorMessage = "service " + name + " response error";
-                }
-                getResponse().addHeader("Content-Type", "application/json");
-                ByteArrayInputStream bin = new ByteArrayInputStream(responseMsgPacket.getData().array());
-                getResponse().write(bin);
             } finally {
                 stateService.markInvocationEnd(pluginId, pluginName, errorMessage);
                 ServiceInvocationLogs.append(runtimeKvStore, pluginId, capabilityKey, requestId, null,

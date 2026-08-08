@@ -1,6 +1,5 @@
 package com.zrlog.plugincore.server.util;
 
-import com.hibegin.common.util.IOUtil;
 import com.zrlog.plugin.common.LoggerUtil;
 
 import java.io.IOException;
@@ -14,6 +13,7 @@ import java.util.logging.Logger;
 public class ListenWebServerThread extends Thread {
 
     private static final Logger LOGGER = LoggerUtil.getLogger(ListenWebServerThread.class);
+    private static final int WATCHER_READ_BUFFER_BYTES = 1024;
 
     private final int port;
 
@@ -28,13 +28,19 @@ public class ListenWebServerThread extends Thread {
             serverSocket.bind(new InetSocketAddress("127.0.0.1", port));
             Socket socket = serverSocket.accept();
             InputStream inputStream = socket.getInputStream();
-            // padding await the web server exception shutdown
-            IOUtil.getByteByInputStream(inputStream);
+            awaitWatcherClose(inputStream);
             socket.close();
             serverSocket.close();
             System.exit(0);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "", e);
+        }
+    }
+
+    static void awaitWatcherClose(InputStream inputStream) throws IOException {
+        byte[] buffer = new byte[WATCHER_READ_BUFFER_BYTES];
+        while (inputStream.read(buffer) != -1) {
+            // The watcher connection is only a lifetime signal; discard any received bytes.
         }
     }
 }

@@ -31,6 +31,10 @@ type RuntimeMaintenancePayload = {
     autoDownloadMissingPluginFileEnabled: boolean;
     idleStopEnabled: boolean;
     idleTimeoutSeconds: number;
+    idleScanIntervalSeconds: number;
+    maxRunningPlugins: number;
+    maxConcurrentStarts: number;
+    startFailureBackoffSeconds: number;
 }
 
 type RuntimeLoadStrategy = "onDemand" | "startup";
@@ -49,8 +53,18 @@ const defaultRuntimeMaintenancePayload: RuntimeMaintenancePayload = {
     onDemandEnabled: true,
     autoDownloadMissingPluginFileEnabled: true,
     idleStopEnabled: true,
-    idleTimeoutSeconds: 300
+    idleTimeoutSeconds: 300,
+    idleScanIntervalSeconds: 300,
+    maxRunningPlugins: 4,
+    maxConcurrentStarts: 2,
+    startFailureBackoffSeconds: 30
 };
+
+const exactMaintenanceIntervalSeconds = [60, 120, 180, 240, 300, 360, 600, 720, 900, 1200, 1800, 3600];
+const maintenanceIntervalOptions = exactMaintenanceIntervalSeconds.map(seconds => ({
+    value: seconds,
+    label: seconds === 3600 ? "1 小时" : `${seconds / 60} 分钟`
+}));
 
 const defaultRunPagination: RuntimePagination = {
     current: 1,
@@ -89,6 +103,8 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         id === "system:plugin-runtime-maintenance" || (pluginId === "__system__" && capabilityKey === "plugin.runtime.maintenance");
     const isRuntimeMaintenanceAutomation = (automation?: Automation | null) =>
         !!automation && isRuntimeMaintenance(automation.id, automation.pluginId, automation.capabilityKey);
+    const hasExplicitRuntimeMaintenanceInterval = (automation?: Automation | null) =>
+        !!automation?.payload && Object.prototype.hasOwnProperty.call(automation.payload, "idleScanIntervalSeconds");
     const isSystemAutomation = (automation?: Automation | null) => automation?.system === true;
     const parseBooleanPayload = (value: unknown, fallback: boolean) => {
         if (value === undefined || value === null) {
@@ -99,9 +115,13 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         }
         return value !== "false";
     };
-    const parseNumberPayload = (value: unknown, fallback: number, min: number) => {
+    const parseNumberPayload = (value: unknown, fallback: number, min: number, max: number) => {
         const number = Number(value);
-        return Number.isFinite(number) ? Math.max(min, number) : fallback;
+        return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+    };
+    const parseMaintenanceInterval = (value: unknown) => {
+        const seconds = parseNumberPayload(value, defaultRuntimeMaintenancePayload.idleScanIntervalSeconds, 60, 3600);
+        return exactMaintenanceIntervalSeconds.find(candidate => candidate >= seconds) || 3600;
     };
     const runtimeMaintenancePayload = (payload?: Record<string, unknown>): RuntimeMaintenancePayload => {
         const onDemandEnabled = parseBooleanPayload(payload?.onDemandEnabled, defaultRuntimeMaintenancePayload.onDemandEnabled);
@@ -110,7 +130,15 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             autoDownloadMissingPluginFileEnabled: parseBooleanPayload(payload?.autoDownloadMissingPluginFileEnabled,
                 defaultRuntimeMaintenancePayload.autoDownloadMissingPluginFileEnabled),
             idleStopEnabled: onDemandEnabled && parseBooleanPayload(payload?.idleStopEnabled, defaultRuntimeMaintenancePayload.idleStopEnabled),
-            idleTimeoutSeconds: parseNumberPayload(payload?.idleTimeoutSeconds, defaultRuntimeMaintenancePayload.idleTimeoutSeconds, 10)
+            idleTimeoutSeconds: parseNumberPayload(payload?.idleTimeoutSeconds,
+                defaultRuntimeMaintenancePayload.idleTimeoutSeconds, 10, 86400),
+            idleScanIntervalSeconds: parseMaintenanceInterval(payload?.idleScanIntervalSeconds),
+            maxRunningPlugins: parseNumberPayload(payload?.maxRunningPlugins,
+                defaultRuntimeMaintenancePayload.maxRunningPlugins, 1, 32),
+            maxConcurrentStarts: parseNumberPayload(payload?.maxConcurrentStarts,
+                defaultRuntimeMaintenancePayload.maxConcurrentStarts, 1, 8),
+            startFailureBackoffSeconds: parseNumberPayload(payload?.startFailureBackoffSeconds,
+                defaultRuntimeMaintenancePayload.startFailureBackoffSeconds, 1, 3600)
         };
     };
 
@@ -200,6 +228,10 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             maintenanceAutoDownloadMissingPluginFileEnabled: defaultRuntimeMaintenancePayload.autoDownloadMissingPluginFileEnabled,
             maintenanceIdleStopEnabled: defaultRuntimeMaintenancePayload.idleStopEnabled,
             maintenanceIdleTimeoutSeconds: defaultRuntimeMaintenancePayload.idleTimeoutSeconds,
+            maintenanceIdleScanIntervalSeconds: defaultRuntimeMaintenancePayload.idleScanIntervalSeconds,
+            maintenanceMaxRunningPlugins: defaultRuntimeMaintenancePayload.maxRunningPlugins,
+            maintenanceMaxConcurrentStarts: defaultRuntimeMaintenancePayload.maxConcurrentStarts,
+            maintenanceStartFailureBackoffSeconds: defaultRuntimeMaintenancePayload.startFailureBackoffSeconds,
             payload: "{}"
         });
         setModalOpen(true);
@@ -217,6 +249,10 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             maintenanceAutoDownloadMissingPluginFileEnabled: maintenancePayload.autoDownloadMissingPluginFileEnabled,
             maintenanceIdleStopEnabled: maintenancePayload.idleStopEnabled,
             maintenanceIdleTimeoutSeconds: maintenancePayload.idleTimeoutSeconds,
+            maintenanceIdleScanIntervalSeconds: maintenancePayload.idleScanIntervalSeconds,
+            maintenanceMaxRunningPlugins: maintenancePayload.maxRunningPlugins,
+            maintenanceMaxConcurrentStarts: maintenancePayload.maxConcurrentStarts,
+            maintenanceStartFailureBackoffSeconds: maintenancePayload.startFailureBackoffSeconds,
             payload: JSON.stringify(automation.payload || {}, null, 2)
         });
         setModalOpen(true);
@@ -225,13 +261,26 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
     const saveAutomation = async () => {
         const values = await form.validateFields();
         const systemRuntimeMaintenance = editing ? isRuntimeMaintenanceAutomation(editing) : false;
+        const legacyCustomRuntimeMaintenance = systemRuntimeMaintenance && !hasExplicitRuntimeMaintenanceInterval(editing);
         const onDemandEnabled = values.maintenanceLoadStrategy !== "startup";
-        const payload = systemRuntimeMaintenance ? JSON.stringify({
-            onDemandEnabled,
-            autoDownloadMissingPluginFileEnabled: values.maintenanceAutoDownloadMissingPluginFileEnabled !== false,
-            idleStopEnabled: onDemandEnabled && values.maintenanceIdleStopEnabled !== false,
-            idleTimeoutSeconds: Number(values.maintenanceIdleTimeoutSeconds || defaultRuntimeMaintenancePayload.idleTimeoutSeconds)
-        }) : values.payload || "{}";
+        let payload = values.payload || "{}";
+        if (systemRuntimeMaintenance) {
+            const runtimePayload: Record<string, unknown> = {
+                onDemandEnabled,
+                autoDownloadMissingPluginFileEnabled: values.maintenanceAutoDownloadMissingPluginFileEnabled !== false,
+                idleStopEnabled: onDemandEnabled && values.maintenanceIdleStopEnabled !== false,
+                idleTimeoutSeconds: Number(values.maintenanceIdleTimeoutSeconds || defaultRuntimeMaintenancePayload.idleTimeoutSeconds),
+                maxRunningPlugins: Number(values.maintenanceMaxRunningPlugins || defaultRuntimeMaintenancePayload.maxRunningPlugins),
+                maxConcurrentStarts: Number(values.maintenanceMaxConcurrentStarts || defaultRuntimeMaintenancePayload.maxConcurrentStarts),
+                startFailureBackoffSeconds: Number(values.maintenanceStartFailureBackoffSeconds
+                    || defaultRuntimeMaintenancePayload.startFailureBackoffSeconds)
+            };
+            if (!legacyCustomRuntimeMaintenance) {
+                runtimePayload.idleScanIntervalSeconds = Number(values.maintenanceIdleScanIntervalSeconds
+                    || defaultRuntimeMaintenancePayload.idleScanIntervalSeconds);
+            }
+            payload = JSON.stringify(runtimePayload);
+        }
         if (!systemRuntimeMaintenance) {
             JSON.parse(payload);
         }
@@ -245,7 +294,9 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         params.set("name", values.name);
         params.set("pluginId", pluginId);
         params.set("capabilityKey", capabilityKey);
-        params.set("cron", values.cron);
+        if (!systemRuntimeMaintenance || legacyCustomRuntimeMaintenance) {
+            params.set("cron", values.cron);
+        }
         params.set("enabled", String(systemRuntimeMaintenance ? true : values.enabled));
         params.set("payload", payload);
         const url = editing?.id ? "/runtime-automations/update" : "/runtime-automations";
@@ -526,9 +577,10 @@ crons = ["*/5 * * * *"]`;
         {title: "错误", dataIndex: "errorMessage", render: formatTime, responsive: ["lg"]}
     ];
     const editingRuntimeMaintenance = isRuntimeMaintenanceAutomation(editing);
+    const editingLegacyCustomRuntimeMaintenance = editingRuntimeMaintenance && !hasExplicitRuntimeMaintenanceInterval(editing);
     const editingSystemAutomation = isSystemAutomation(editing);
-    const showMaintenanceIdleSettings = (maintenanceLoadStrategy || "onDemand") === "onDemand";
-    const showMaintenanceIdleTimeout = showMaintenanceIdleSettings && maintenanceIdleStopEnabled !== false;
+    const showMaintenanceOnDemandSettings = (maintenanceLoadStrategy || "onDemand") === "onDemand";
+    const showMaintenanceIdleTimeout = showMaintenanceOnDemandSettings && maintenanceIdleStopEnabled !== false;
 
     return (
         <Space direction="vertical" size={16} style={{width: "100%"}}>
@@ -654,7 +706,15 @@ crons = ["*/5 * * * *"]`;
                 </Space>
             </Drawer>
 
-            <Modal title={editing ? "编辑定时任务" : "新建定时任务"} width={isMobile ? "calc(100vw - 24px)" : undefined} open={modalOpen} onOk={saveAutomation} onCancel={() => setModalOpen(false)} destroyOnClose>
+            <Modal
+                title={editing ? "编辑定时任务" : "新建定时任务"}
+                width={isMobile ? "calc(100vw - 24px)" : undefined}
+                open={modalOpen}
+                onOk={saveAutomation}
+                onCancel={() => setModalOpen(false)}
+                destroyOnClose
+                styles={{body: {maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: 4}}}
+            >
                 <Form form={form} layout="vertical">
                     <Form.Item label="任务名称" name="name" rules={[{required: true, message: "请输入任务名称"}]}>
                         <Input disabled={editingSystemAutomation} />
@@ -679,9 +739,11 @@ crons = ["*/5 * * * *"]`;
                             }))}
                         />
                     </Form.Item>
-                    <Form.Item label="执行周期" name="cron" rules={[{required: true, message: "请输入执行周期"}]}>
-                        <Input placeholder="*/5 * * * *" />
-                    </Form.Item>
+                    {(!editingRuntimeMaintenance || editingLegacyCustomRuntimeMaintenance) && (
+                        <Form.Item label="执行周期" name="cron" rules={[{required: true, message: "请输入执行周期"}]}>
+                            <Input placeholder="*/5 * * * *" />
+                        </Form.Item>
+                    )}
                     {!editingSystemAutomation && (
                         <Form.Item label="启用" name="enabled" valuePropName="checked">
                             <Switch />
@@ -701,7 +763,39 @@ crons = ["*/5 * * * *"]`;
                             <Form.Item label="缺失包自动下载" name="maintenanceAutoDownloadMissingPluginFileEnabled" valuePropName="checked">
                                 <Switch />
                             </Form.Item>
-                            {showMaintenanceIdleSettings && (
+                            {!editingLegacyCustomRuntimeMaintenance && (
+                                <Form.Item
+                                    label="维护间隔"
+                                    name="maintenanceIdleScanIntervalSeconds"
+                                    rules={[{required: true, message: "请选择维护间隔"}]}
+                                >
+                                    <Select options={maintenanceIntervalOptions} />
+                                </Form.Item>
+                            )}
+                            {showMaintenanceOnDemandSettings && (
+                                <Form.Item
+                                    label="运行插件上限"
+                                    name="maintenanceMaxRunningPlugins"
+                                    rules={[{required: true, message: "请输入运行插件上限"}]}
+                                >
+                                    <InputNumber min={1} max={32} precision={0} style={{width: "100%"}} />
+                                </Form.Item>
+                            )}
+                            <Form.Item
+                                label="并发启动上限"
+                                name="maintenanceMaxConcurrentStarts"
+                                rules={[{required: true, message: "请输入并发启动上限"}]}
+                            >
+                                <InputNumber min={1} max={8} precision={0} style={{width: "100%"}} />
+                            </Form.Item>
+                            <Form.Item
+                                label="失败重试间隔"
+                                name="maintenanceStartFailureBackoffSeconds"
+                                rules={[{required: true, message: "请输入失败重试间隔"}]}
+                            >
+                                <InputNumber min={1} max={3600} precision={0} addonAfter="秒" style={{width: "100%"}} />
+                            </Form.Item>
+                            {showMaintenanceOnDemandSettings && (
                                 <Form.Item label="空闲回收" name="maintenanceIdleStopEnabled" valuePropName="checked">
                                     <Switch />
                                 </Form.Item>

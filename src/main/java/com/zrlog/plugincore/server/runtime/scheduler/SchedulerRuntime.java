@@ -21,22 +21,25 @@ import com.zrlog.plugincore.server.vo.PluginVO;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.PriorityQueue;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 public class SchedulerRuntime {
 
-    private static final Map<String, Semaphore> EXECUTION_LOCKS = new ConcurrentHashMap<>();
+    static final int EXECUTION_LOCK_STRIPES = 256;
+    private static final Semaphore[] EXECUTION_LOCKS = createExecutionLocks();
     private static final int STORE_UPDATE_RETRIES = 3;
     private static final int MAX_TICK_TASK_THREADS = 8;
+    private static final int MAX_TICK_TASKS = 64;
     private static final long LEASE_SECONDS = 300L;
     private static final String LOCK_KEY_PREFIX = "plugin-scheduler-";
 
@@ -115,13 +118,10 @@ public class SchedulerRuntime {
     public SchedulerTickResult tick(ZonedDateTime now, String source) {
         SchedulerTickResult result = new SchedulerTickResult();
         List<PluginAutomation> automations = ensureSystemAutomations(now);
-        List<ClaimCandidate> claimCandidates = new ArrayList<>();
+        List<PluginAutomation> claimBatch = selectClaimBatch(automations, now, result);
+        List<ClaimCandidate> claimCandidates = new ArrayList<>(claimBatch.size());
         String invocationSource = invocationSource(source);
-        for (PluginAutomation automation : automations) {
-            if (!Boolean.TRUE.equals(automation.getEnabled())) {
-                result.skipped();
-                continue;
-            }
+        for (PluginAutomation automation : claimBatch) {
             Semaphore lock = executionLock(automation);
             if (!lock.tryAcquire()) {
                 result.skipped();
@@ -160,8 +160,12 @@ public class SchedulerRuntime {
                 });
         try {
             List<CompletableFuture<SchedulerTickResult>> futures = new ArrayList<>();
-            for (ClaimedAutomation claimedAutomation : claimedAutomations) {
-                futures.add(CompletableFuture.supplyAsync(() -> executeClaimedAutomation(claimedAutomation, now, invocationSource), executorService));
+            AtomicInteger nextTaskIndex = new AtomicInteger();
+            int workerCount = Math.min(MAX_TICK_TASK_THREADS, claimedAutomations.size());
+            for (int i = 0; i < workerCount; i++) {
+                futures.add(CompletableFuture.supplyAsync(
+                        () -> executeClaimedAutomations(claimedAutomations, nextTaskIndex, now, invocationSource),
+                        executorService));
             }
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             for (CompletableFuture<SchedulerTickResult> future : futures) {
@@ -171,6 +175,54 @@ public class SchedulerRuntime {
             executorService.shutdown();
         }
         return result;
+    }
+
+    private List<PluginAutomation> selectClaimBatch(List<PluginAutomation> automations,
+                                                    ZonedDateTime now,
+                                                    SchedulerTickResult result) {
+        Comparator<PluginAutomation> priority = Comparator.comparingLong(SchedulerRuntime::nextRunPriority);
+        PriorityQueue<PluginAutomation> oldest = new PriorityQueue<>(MAX_TICK_TASKS, priority.reversed());
+        for (PluginAutomation automation : automations) {
+            if (!Boolean.TRUE.equals(automation.getEnabled()) || !readyToClaim(automation, now)) {
+                result.skipped();
+                continue;
+            }
+            if (oldest.size() < MAX_TICK_TASKS) {
+                oldest.offer(automation);
+                continue;
+            }
+            if (priority.compare(automation, oldest.peek()) < 0) {
+                oldest.poll();
+                oldest.offer(automation);
+            }
+            result.skipped();
+        }
+        List<PluginAutomation> claimBatch = new ArrayList<>(oldest);
+        claimBatch.sort(priority);
+        return claimBatch;
+    }
+
+    private SchedulerTickResult executeClaimedAutomations(List<ClaimedAutomation> claimedAutomations,
+                                                           AtomicInteger nextTaskIndex,
+                                                           ZonedDateTime now,
+                                                           String source) {
+        SchedulerTickResult result = new SchedulerTickResult();
+        int taskIndex;
+        while ((taskIndex = nextTaskIndex.getAndIncrement()) < claimedAutomations.size()) {
+            result.merge(executeClaimedAutomation(claimedAutomations.get(taskIndex), now, source));
+        }
+        return result;
+    }
+
+    private boolean readyToClaim(PluginAutomation automation, ZonedDateTime now) {
+        if (automation.getNextRunAt() == null) {
+            return true;
+        }
+        return automation.getNextRunAt() <= SchedulerTimes.millis(now) && !leaseActive(automation, now);
+    }
+
+    private static long nextRunPriority(PluginAutomation automation) {
+        return automation.getNextRunAt() == null ? Long.MIN_VALUE : automation.getNextRunAt();
     }
 
     private List<PluginAutomation> ensureSystemAutomations(ZonedDateTime now) {
@@ -254,11 +306,31 @@ public class SchedulerRuntime {
 
     private Semaphore executionLock(PluginAutomation automation) {
         // Local semaphore gates this JVM; DistributedLock gates duplicate scheduler tasks across processes.
-        return EXECUTION_LOCKS.computeIfAbsent(executionKey(automation), key -> new Semaphore(1));
+        return EXECUTION_LOCKS[executionLockIndex(executionKey(automation))];
     }
 
     private String executionKey(PluginAutomation automation) {
         return automation.getPluginId() + ":" + automation.getCapabilityKey();
+    }
+
+    static int executionLockIndex(String key) {
+        return Math.floorMod(Objects.hashCode(key), EXECUTION_LOCK_STRIPES);
+    }
+
+    static int executionLockStripeCount() {
+        return EXECUTION_LOCKS.length;
+    }
+
+    static int maxTickTasks() {
+        return MAX_TICK_TASKS;
+    }
+
+    private static Semaphore[] createExecutionLocks() {
+        Semaphore[] locks = new Semaphore[EXECUTION_LOCK_STRIPES];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new Semaphore(1);
+        }
+        return locks;
     }
 
     private static SchedulerTaskLock distributedTaskLock(String key) {

@@ -18,7 +18,9 @@ import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class TrackingCapabilityInvokerTest {
 
@@ -39,6 +41,53 @@ public class TrackingCapabilityInvokerTest {
         PluginRuntimeState state = new PluginRuntimeStateStore(kvStore).find("plugin-a").get();
         assertEquals("ready", state.getStatus());
         assertEquals(Integer.valueOf(0), state.getActiveInvocationCount());
+    }
+
+    @Test
+    public void shouldFinishTrackingWhenDelegateThrowsRuntimeException() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        TrackingCapabilityInvoker invoker = invoker(kvStore, (pluginId, capabilityKey, payload, context) -> {
+            throw new IllegalStateException("delegate failed");
+        }, new FakeStarter(true));
+
+        CapabilityInvokeResult result = invoker.invoke(
+                "plugin-a", "reminder.scanDueTasks", null, context("scheduler"));
+
+        assertFalse(result.isSuccess());
+        assertEquals("delegate failed", result.getErrorMessage());
+        assertInvocationFinished(kvStore, "delegate failed");
+    }
+
+    @Test
+    public void shouldFinishTrackingAndRethrowDelegateError() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AssertionError fatal = new AssertionError("fatal delegate failure");
+        TrackingCapabilityInvoker invoker = invoker(kvStore, (pluginId, capabilityKey, payload, context) -> {
+            throw fatal;
+        }, new FakeStarter(true));
+
+        try {
+            invoker.invoke("plugin-a", "reminder.scanDueTasks", null, context("scheduler"));
+            fail("delegate error should be rethrown");
+        } catch (AssertionError actual) {
+            assertSame(fatal, actual);
+        }
+
+        assertInvocationFinished(kvStore, "fatal delegate failure");
+    }
+
+    @Test
+    public void shouldFinishTrackingWhenDelegateReturnsNull() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        TrackingCapabilityInvoker invoker = invoker(kvStore,
+                (pluginId, capabilityKey, payload, context) -> null, new FakeStarter(true));
+
+        CapabilityInvokeResult result = invoker.invoke(
+                "plugin-a", "reminder.scanDueTasks", null, context("scheduler"));
+
+        assertFalse(result.isSuccess());
+        assertEquals("Capability invoker returned no result", result.getErrorMessage());
+        assertInvocationFinished(kvStore, "Capability invoker returned no result");
     }
 
     @Test
@@ -215,6 +264,16 @@ public class TrackingCapabilityInvokerTest {
         capability.setExposure(Arrays.asList(exposure));
         capability.setEnabled(Boolean.TRUE);
         return capability;
+    }
+
+    private void assertInvocationFinished(InMemoryRuntimeKvStore kvStore, String errorMessage) {
+        PluginRuntimeState state = new PluginRuntimeStateStore(kvStore).find("plugin-a").get();
+        assertEquals(Integer.valueOf(0), state.getActiveInvocationCount());
+        assertTrue(state.getInstances().get(0).getActiveInvocationIds().isEmpty());
+        assertEquals(errorMessage, state.getLastError());
+        assertEquals(1, new InvocationLogStore(kvStore).list().size());
+        assertEquals("error", new InvocationLogStore(kvStore).list().get(0).getStatus());
+        assertEquals(errorMessage, new InvocationLogStore(kvStore).list().get(0).getErrorMessage());
     }
 
     private static class FakeStarter implements PluginRuntimeStarter {

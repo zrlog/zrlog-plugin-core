@@ -62,7 +62,9 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
         String pluginName = pluginDisplayName(pluginVO.getPlugin());
         try {
             runtimeStateService(pluginCore).markStopping(pluginId, pluginName);
-            pluginBootstrap().stopPlugin(pluginVO.getPlugin().getShortName());
+            if (!pluginBootstrap().stopPlugin(pluginId, pluginVO.getPlugin().getShortName())) {
+                throw new IllegalStateException("插件停止失败");
+            }
             runtimeStateService(pluginCore).markStopped(pluginId, pluginName);
             return success();
         } catch (RuntimeException e) {
@@ -82,16 +84,28 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
                 Boolean autoDownloadMissingPluginFileEnabled = runtimeBooleanParam("autoDownloadMissingPluginFileEnabled",
                         currentPluginCore.getSetting().isAutoDownloadMissingPluginFileEnabled());
                 Boolean idleStopEnabled = runtimeBooleanParam("idleStopEnabled", setting.getIdleStopEnabled());
-                Long idleTimeoutSeconds = runtimeLongParam("idleTimeoutSeconds", setting.getIdleTimeoutSeconds(), 10L);
-                Long idleScanIntervalSeconds = runtimeLongParam("idleScanIntervalSeconds", setting.getIdleScanIntervalSeconds(), 5L);
-                setting = pluginCoreDAO.update(pluginCore -> {
-                    pluginCore.getSetting().setAutoDownloadMissingPluginFileEnabled(autoDownloadMissingPluginFileEnabled);
-                    PluginRuntimeSetting runtime = pluginCore.getSetting().getRuntime();
-                    runtime.setOnDemandEnabled(onDemandEnabled);
-                    runtime.setIdleStopEnabled(idleStopEnabled);
-                    runtime.setIdleTimeoutSeconds(idleTimeoutSeconds);
-                    runtime.setIdleScanIntervalSeconds(idleScanIntervalSeconds);
-                }).getSetting().getRuntime();
+                Long idleTimeoutSeconds = runtimeLongParam("idleTimeoutSeconds", setting.getIdleTimeoutSeconds(),
+                        PluginRuntimeSetting.MIN_IDLE_TIMEOUT_SECONDS, PluginRuntimeSetting.MAX_IDLE_TIMEOUT_SECONDS);
+                Long idleScanIntervalSeconds = runtimeLongParam("idleScanIntervalSeconds", setting.getIdleScanIntervalSeconds(),
+                        PluginRuntimeSetting.MIN_IDLE_SCAN_INTERVAL_SECONDS, PluginRuntimeSetting.MAX_IDLE_SCAN_INTERVAL_SECONDS);
+                Long maxRunningPlugins = runtimeLongParam("maxRunningPlugins", setting.getMaxRunningPlugins(),
+                        PluginRuntimeSetting.MIN_MAX_RUNNING_PLUGINS, PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS);
+                Long maxConcurrentStarts = runtimeLongParam("maxConcurrentStarts", setting.getMaxConcurrentStarts(),
+                        PluginRuntimeSetting.MIN_MAX_CONCURRENT_STARTS, PluginRuntimeSetting.MAX_MAX_CONCURRENT_STARTS);
+                Long startFailureBackoffSeconds = runtimeLongParam("startFailureBackoffSeconds",
+                        setting.getStartFailureBackoffSeconds(), PluginRuntimeSetting.MIN_START_FAILURE_BACKOFF_SECONDS,
+                        PluginRuntimeSetting.MAX_START_FAILURE_BACKOFF_SECONDS);
+                PluginRuntimeSetting requested = new PluginRuntimeSetting();
+                requested.setOnDemandEnabled(onDemandEnabled);
+                requested.setAutoDownloadMissingPluginFileEnabled(autoDownloadMissingPluginFileEnabled);
+                requested.setIdleStopEnabled(idleStopEnabled);
+                requested.setIdleTimeoutSeconds(idleTimeoutSeconds);
+                requested.setIdleScanIntervalSeconds(idleScanIntervalSeconds);
+                requested.setMaxRunningPlugins(maxRunningPlugins);
+                requested.setMaxConcurrentStarts(maxConcurrentStarts);
+                requested.setStartFailureBackoffSeconds(startFailureBackoffSeconds);
+                automationService().saveRuntimeMaintenance(requested, null);
+                setting = pluginCoreDAO.loadSnapshot().getSetting().getRuntime();
                 pluginBootstrap().loadPluginsAsync();
             } catch (IllegalArgumentException e) {
                 return error(e.getMessage());
@@ -138,7 +152,7 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
         return getRequest().getParaToBool(name);
     }
 
-    private Long runtimeLongParam(String name, Long fallback, long min) {
+    private Long runtimeLongParam(String name, Long fallback, long min, long max) {
         String value = getRequest().getParaToStr(name);
         Long number = fallback;
         if (!isBlank(value)) {
@@ -148,9 +162,6 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
                 throw new IllegalArgumentException(name + " 必须是数字");
             }
         }
-        if (number == null || number < min) {
-            return min;
-        }
-        return number;
+        return number == null ? min : Math.max(min, Math.min(max, number));
     }
 }

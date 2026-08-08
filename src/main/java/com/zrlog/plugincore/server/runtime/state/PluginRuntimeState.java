@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime.state;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+
 import java.util.List;
 
 public class PluginRuntimeState {
@@ -101,6 +103,6 @@ public class PluginRuntimeState {
     }
 
     public void setLastError(String lastError) {
-        this.lastError = lastError;
+        this.lastError = RuntimeTextLimits.truncateErrorMessage(lastError);
     }
 }

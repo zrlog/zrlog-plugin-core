@@ -7,31 +7,42 @@ import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginFiles;
 import com.zrlog.plugincore.server.runtime.plugin.process.PluginProcessRuntime;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
+import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.util.StringUtils;
 
 import java.io.File;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 public class PluginMetadataBootstrapper {
 
     private static final long PLUGIN_METADATA_WAIT_TIMEOUT_MS = 10000L;
     private static final long PLUGIN_METADATA_WAIT_INTERVAL_MS = 100L;
+    private static final long PLUGIN_START_CAPACITY_WAIT_TIMEOUT_MS = 5000L;
+    private static final long PLUGIN_OPERATION_WAIT_TIMEOUT_MS = 30000L;
 
     private final PluginProcessRuntime processRuntime;
     private final PluginSessionRegistry sessionRegistry;
-    private final Consumer<String> pluginStopper;
+    private final Predicate<String> pluginStopper;
+    private final PluginStartCoordinator startCoordinator;
 
-    public PluginMetadataBootstrapper(PluginProcessRuntime processRuntime, Consumer<String> pluginStopper) {
-        this(processRuntime, processRuntime == null ? new PluginSessionRegistry() : processRuntime.sessionRegistry(), pluginStopper);
+    public PluginMetadataBootstrapper(PluginProcessRuntime processRuntime, Predicate<String> pluginStopper) {
+        this(processRuntime, processRuntime == null ? new PluginSessionRegistry() : processRuntime.sessionRegistry(),
+                pluginStopper, new PluginStartCoordinator());
     }
 
     public PluginMetadataBootstrapper(PluginProcessRuntime processRuntime, PluginSessionRegistry sessionRegistry,
-                                      Consumer<String> pluginStopper) {
+                                      Predicate<String> pluginStopper) {
+        this(processRuntime, sessionRegistry, pluginStopper, new PluginStartCoordinator());
+    }
+
+    public PluginMetadataBootstrapper(PluginProcessRuntime processRuntime, PluginSessionRegistry sessionRegistry,
+                                      Predicate<String> pluginStopper, PluginStartCoordinator startCoordinator) {
         this.processRuntime = processRuntime;
         this.sessionRegistry = sessionRegistry;
         this.pluginStopper = pluginStopper;
+        this.startCoordinator = startCoordinator;
     }
 
     public boolean startPluginFileForMetadata(File pluginFile) {
@@ -45,16 +56,61 @@ public class PluginMetadataBootstrapper {
         if (pluginFile == null || !pluginFile.exists() || pluginFile.length() == 0 || StringUtils.isEmpty(pluginId)) {
             return false;
         }
-        String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
-        if (sessionRegistry.isRunningByPluginShortName(pluginShortName) && hasPluginFileChanged(pluginFile, pluginId)) {
-            pluginStopper.accept(pluginShortName);
+        MetadataStartAttempt attempt = new MetadataStartAttempt();
+        try {
+            return startCoordinator.start(metadataCoordinationKey(pluginFile, pluginId), maxConcurrentStarts(),
+                    PLUGIN_START_CAPACITY_WAIT_TIMEOUT_MS, PLUGIN_OPERATION_WAIT_TIMEOUT_MS, startFailureBackoffMs(),
+                    () -> startPluginFileWithinCapacity(pluginFile, pluginId, attempt));
+        } finally {
+            cleanupMetadataProcess(pluginFile, pluginId, attempt);
         }
-        processRuntime.loadPlugin(pluginFile, pluginId);
-        boolean registered = waitForPluginMetadata(pluginShortName, pluginId);
-        if (registered) {
+    }
+
+    private boolean startPluginFileWithinCapacity(File pluginFile, String pluginId, MetadataStartAttempt attempt) {
+        String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
+        boolean wasRunning = sessionRegistry.isRunningByPluginShortName(pluginShortName);
+        boolean fileChanged = wasRunning && hasPluginFileChanged(pluginFile, pluginId);
+        if (fileChanged && !pluginStopper.test(pluginShortName)) {
+            return false;
+        }
+        attempt.startedProcess = processRuntime.loadPlugin(pluginFile, pluginId);
+        if (fileChanged && attempt.startedProcess == null) {
+            return false;
+        }
+        attempt.registered = waitForPluginMetadata(pluginShortName, pluginId);
+        if (attempt.registered) {
             PluginCoreDAO.getInstance().updatePluginFileMd5(pluginShortName, pluginId, PluginFiles.pluginFileMd5(pluginFile));
         }
-        return registered;
+        return attempt.registered;
+    }
+
+    private void cleanupMetadataProcess(File pluginFile, String pluginId, MetadataStartAttempt attempt) {
+        if (attempt.startedProcess == null) {
+            return;
+        }
+        String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
+        Process ownedProcess = attempt.startedProcess;
+        if (!attempt.registered) {
+            processRuntime.destroyByPluginIdIfCurrent(pluginId, pluginShortName, ownedProcess);
+            return;
+        }
+        if (onDemandEnabled()) {
+            startCoordinator.runIfUnclaimed(pluginId,
+                    () -> processRuntime.destroyByPluginIdIfCurrent(pluginId, pluginShortName, ownedProcess));
+        }
+    }
+
+    private String metadataCoordinationKey(File pluginFile, String pluginId) {
+        String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
+        PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginShortName);
+        if (pluginVO != null && pluginVO.getPlugin() != null
+                && Objects.equals(pluginId, pluginVO.getPlugin().getId())) {
+            return pluginId;
+        }
+        if (Objects.equals(pluginId, pluginShortName)) {
+            return pluginId;
+        }
+        return "metadata:" + pluginShortName;
     }
 
     public boolean shouldStartPluginFileForMetadata(File pluginFile, String pluginId) {
@@ -103,7 +159,7 @@ public class PluginMetadataBootstrapper {
             if (session == null) {
                 session = sessionRegistry.getLocalSessionByPluginShortName(pluginShortName);
             }
-            if (session != null && session.getPlugin() != null
+            if (session != null && sessionRegistry.isReady(session) && session.getPlugin() != null
                     && Objects.equals(pluginShortName, session.getPlugin().getShortName())) {
                 return true;
             }
@@ -131,5 +187,26 @@ public class PluginMetadataBootstrapper {
             return false;
         }
         return !Objects.equals(pluginVO.getFileMd5(), PluginFiles.pluginFileMd5(pluginFile));
+    }
+
+    private int maxConcurrentStarts() {
+        PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
+        return pluginCore.getSetting().getRuntime().getMaxConcurrentStarts().intValue();
+    }
+
+    private long startFailureBackoffMs() {
+        PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
+        return pluginCore.getSetting().getRuntime().getStartFailureBackoffSeconds() * 1000L;
+    }
+
+    private boolean onDemandEnabled() {
+        PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
+        return pluginCore.getSetting().getRuntime().getOnDemandEnabled();
+    }
+
+    private static final class MetadataStartAttempt {
+
+        private Process startedProcess;
+        private boolean registered;
     }
 }

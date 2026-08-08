@@ -17,8 +17,8 @@ public final class RuntimeSystemAutomations {
     static final String SYSTEM_PLUGIN_ID = "__system__";
     static final String RUNTIME_MAINTENANCE_KEY = "plugin.runtime.maintenance";
 
-    private static final String DEFAULT_RUNTIME_MAINTENANCE_CRON = "*/5 * * * *";
     private static final String RUNTIME_MAINTENANCE_NAME = "运行态维护";
+    private static final String IDLE_SCAN_INTERVAL_SECONDS = "idleScanIntervalSeconds";
 
     private RuntimeSystemAutomations() {
     }
@@ -63,9 +63,10 @@ public final class RuntimeSystemAutomations {
             automation.setName(RUNTIME_MAINTENANCE_NAME);
             automation.setPluginId(SYSTEM_PLUGIN_ID);
             automation.setCapabilityKey(RUNTIME_MAINTENANCE_KEY);
-            automation.setCron(DEFAULT_RUNTIME_MAINTENANCE_CRON);
+            PluginRuntimeSetting runtimeSetting = normalizedRuntimeSetting(setting);
+            automation.setCron(runtimeMaintenanceCron(runtimeSetting.getIdleScanIntervalSeconds()));
             automation.setEnabled(Boolean.TRUE);
-            automation.setPayload(runtimePayload(setting));
+            automation.setPayload(runtimePayload(runtimeSetting));
             prepareSystemAutomation(automation, cronParser, now);
             automations.add(automation);
             return true;
@@ -84,25 +85,75 @@ public final class RuntimeSystemAutomations {
         automation.setName(RUNTIME_MAINTENANCE_NAME);
         automation.setPluginId(SYSTEM_PLUGIN_ID);
         automation.setCapabilityKey(RUNTIME_MAINTENANCE_KEY);
-        automation.setCron(input.getCron());
+        Map<String, Object> inputPayload = input.getPayload();
+        PluginRuntimeSetting runtimeSetting = runtimeSettingFromPayload(inputPayload);
+        Map<String, Object> normalizedPayload = runtimePayload(runtimeSetting);
+        if (inputPayload != null && inputPayload.containsKey(IDLE_SCAN_INTERVAL_SECONDS)) {
+            automation.setCron(runtimeMaintenanceCron(runtimeSetting.getIdleScanIntervalSeconds()));
+        } else {
+            Long legacyIntervalSeconds = legacyRuntimeMaintenanceIntervalSeconds(input.getCron());
+            if (legacyIntervalSeconds != null) {
+                runtimeSetting.setIdleScanIntervalSeconds(legacyIntervalSeconds);
+                normalizedPayload = runtimePayload(runtimeSetting);
+                automation.setCron(input.getCron());
+            } else if (!isBlank(input.getCron())) {
+                normalizedPayload.remove(IDLE_SCAN_INTERVAL_SECONDS);
+                automation.setCron(input.getCron());
+            } else {
+                automation.setCron(runtimeMaintenanceCron(runtimeSetting.getIdleScanIntervalSeconds()));
+            }
+        }
         automation.setEnabled(Boolean.TRUE);
-        automation.setPayload(runtimePayload(runtimeSettingFromPayload(input.getPayload())));
+        automation.setPayload(normalizedPayload);
         prepareSystemAutomation(automation, cronParser, now);
         return automation;
     }
 
     static PluginRuntimeSetting runtimeSettingFromPayload(Map<String, Object> payload) {
         PluginRuntimeSetting setting = new PluginRuntimeSetting();
-        if (payload == null) {
-            return setting;
-        }
-        setting.setOnDemandEnabled(booleanValue(payload.get("onDemandEnabled"), setting.getOnDemandEnabled()));
-        setting.setAutoDownloadMissingPluginFileEnabled(booleanValue(payload.get("autoDownloadMissingPluginFileEnabled"),
-                setting.getAutoDownloadMissingPluginFileEnabled()));
-        setting.setIdleStopEnabled(booleanValue(payload.get("idleStopEnabled"), setting.getIdleStopEnabled()));
-        setting.setIdleTimeoutSeconds(longValue(payload.get("idleTimeoutSeconds"), setting.getIdleTimeoutSeconds(), 10L));
-        normalizeLoadStrategy(setting);
+        overlayRuntimeSetting(setting, payload);
         return setting;
+    }
+
+    private static void overlayRuntimeSetting(PluginRuntimeSetting setting, Map<String, Object> payload) {
+        if (payload == null) {
+            return;
+        }
+        if (payload.containsKey("onDemandEnabled")) {
+            setting.setOnDemandEnabled(booleanValue(payload.get("onDemandEnabled"), setting.getOnDemandEnabled()));
+        }
+        if (payload.containsKey("autoDownloadMissingPluginFileEnabled")) {
+            setting.setAutoDownloadMissingPluginFileEnabled(booleanValue(
+                    payload.get("autoDownloadMissingPluginFileEnabled"),
+                    setting.getAutoDownloadMissingPluginFileEnabled()));
+        }
+        if (payload.containsKey("idleStopEnabled")) {
+            setting.setIdleStopEnabled(booleanValue(payload.get("idleStopEnabled"), setting.getIdleStopEnabled()));
+        }
+        if (payload.containsKey("idleTimeoutSeconds")) {
+            setting.setIdleTimeoutSeconds(longValue(payload.get("idleTimeoutSeconds"), setting.getIdleTimeoutSeconds(),
+                    PluginRuntimeSetting.MIN_IDLE_TIMEOUT_SECONDS, PluginRuntimeSetting.MAX_IDLE_TIMEOUT_SECONDS));
+        }
+        if (payload.containsKey(IDLE_SCAN_INTERVAL_SECONDS)) {
+            setting.setIdleScanIntervalSeconds(longValue(payload.get(IDLE_SCAN_INTERVAL_SECONDS),
+                    setting.getIdleScanIntervalSeconds(), PluginRuntimeSetting.MIN_IDLE_SCAN_INTERVAL_SECONDS,
+                    PluginRuntimeSetting.MAX_IDLE_SCAN_INTERVAL_SECONDS));
+        }
+        if (payload.containsKey("maxRunningPlugins")) {
+            setting.setMaxRunningPlugins(longValue(payload.get("maxRunningPlugins"), setting.getMaxRunningPlugins(),
+                    PluginRuntimeSetting.MIN_MAX_RUNNING_PLUGINS, PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS));
+        }
+        if (payload.containsKey("maxConcurrentStarts")) {
+            setting.setMaxConcurrentStarts(longValue(payload.get("maxConcurrentStarts"),
+                    setting.getMaxConcurrentStarts(), PluginRuntimeSetting.MIN_MAX_CONCURRENT_STARTS,
+                    PluginRuntimeSetting.MAX_MAX_CONCURRENT_STARTS));
+        }
+        if (payload.containsKey("startFailureBackoffSeconds")) {
+            setting.setStartFailureBackoffSeconds(longValue(payload.get("startFailureBackoffSeconds"),
+                    setting.getStartFailureBackoffSeconds(), PluginRuntimeSetting.MIN_START_FAILURE_BACKOFF_SECONDS,
+                    PluginRuntimeSetting.MAX_START_FAILURE_BACKOFF_SECONDS));
+        }
+        normalizeLoadStrategy(setting);
     }
 
     static Map<String, Object> runtimePayload(PluginRuntimeSetting setting) {
@@ -112,6 +163,10 @@ public final class RuntimeSystemAutomations {
         payload.put("autoDownloadMissingPluginFileEnabled", runtimeSetting.getAutoDownloadMissingPluginFileEnabled());
         payload.put("idleStopEnabled", runtimeSetting.getIdleStopEnabled());
         payload.put("idleTimeoutSeconds", runtimeSetting.getIdleTimeoutSeconds());
+        payload.put(IDLE_SCAN_INTERVAL_SECONDS, runtimeSetting.getIdleScanIntervalSeconds());
+        payload.put("maxRunningPlugins", runtimeSetting.getMaxRunningPlugins());
+        payload.put("maxConcurrentStarts", runtimeSetting.getMaxConcurrentStarts());
+        payload.put("startFailureBackoffSeconds", runtimeSetting.getStartFailureBackoffSeconds());
         return payload;
     }
 
@@ -137,13 +192,33 @@ public final class RuntimeSystemAutomations {
             automation.setCapabilityKey(RUNTIME_MAINTENANCE_KEY);
             changed = true;
         }
-        if (isBlank(automation.getCron())) {
-            automation.setCron(DEFAULT_RUNTIME_MAINTENANCE_CRON);
+        PluginRuntimeSetting normalizedSetting = normalizedRuntimeSetting(setting);
+        Map<String, Object> currentPayload = automation.getPayload();
+        overlayRuntimeSetting(normalizedSetting, currentPayload);
+        boolean explicitInterval = currentPayload != null && currentPayload.containsKey(IDLE_SCAN_INTERVAL_SECONDS);
+        String normalizedCron = automation.getCron();
+        Map<String, Object> normalizedPayload;
+        if (explicitInterval) {
+            normalizedPayload = runtimePayload(normalizedSetting);
+            normalizedCron = runtimeMaintenanceCron(normalizedSetting.getIdleScanIntervalSeconds());
+        } else {
+            Long legacyIntervalSeconds = legacyRuntimeMaintenanceIntervalSeconds(normalizedCron);
+            if (legacyIntervalSeconds != null) {
+                normalizedSetting.setIdleScanIntervalSeconds(legacyIntervalSeconds);
+                normalizedPayload = runtimePayload(normalizedSetting);
+            } else if (isBlank(normalizedCron)) {
+                normalizedPayload = runtimePayload(normalizedSetting);
+                normalizedCron = runtimeMaintenanceCron(normalizedSetting.getIdleScanIntervalSeconds());
+            } else {
+                normalizedPayload = runtimePayload(normalizedSetting);
+                normalizedPayload.remove(IDLE_SCAN_INTERVAL_SECONDS);
+            }
+        }
+        boolean cronChanged = !Objects.equals(normalizedCron, automation.getCron());
+        if (cronChanged) {
+            automation.setCron(normalizedCron);
             changed = true;
         }
-        Map<String, Object> normalizedPayload = automation.getPayload() == null || automation.getPayload().isEmpty()
-                ? runtimePayload(setting)
-                : runtimePayload(runtimeSettingFromPayload(automation.getPayload()));
         if (!Objects.equals(normalizedPayload, automation.getPayload())) {
             automation.setPayload(normalizedPayload);
             changed = true;
@@ -168,7 +243,7 @@ public final class RuntimeSystemAutomations {
             automation.setDeletable(Boolean.FALSE);
             changed = true;
         }
-        if (automation.getNextRunAt() == null) {
+        if (cronChanged || automation.getNextRunAt() == null) {
             automation.setNextRunAt(SchedulerTimes.nextRunAtMillis(cronParser, automation.getCron(), zoneId, now));
             changed = true;
         }
@@ -200,7 +275,7 @@ public final class RuntimeSystemAutomations {
         return Boolean.parseBoolean(value.toString());
     }
 
-    private static Long longValue(Object value, Long fallback, long min) {
+    private static Long longValue(Object value, Long fallback, long min, long max) {
         if (value == null) {
             return fallback;
         }
@@ -210,7 +285,53 @@ public final class RuntimeSystemAutomations {
         } else {
             number = Long.parseLong(value.toString());
         }
-        return Math.max(min, number);
+        return Math.max(min, Math.min(max, number));
+    }
+
+    static String runtimeMaintenanceCron(Long intervalSeconds) {
+        PluginRuntimeSetting setting = new PluginRuntimeSetting();
+        setting.setIdleScanIntervalSeconds(intervalSeconds);
+        long intervalMinutes = setting.getIdleScanIntervalSeconds() / 60L;
+        if (intervalMinutes == 1L) {
+            return "* * * * *";
+        }
+        if (intervalMinutes == 60L) {
+            return "0 * * * *";
+        }
+        return "*/" + intervalMinutes + " * * * *";
+    }
+
+    static Long legacyRuntimeMaintenanceIntervalSeconds(String cron) {
+        if (isBlank(cron)) {
+            return null;
+        }
+        String[] fields = cron.trim().split("\\s+");
+        if (fields.length != 5 || !"*".equals(fields[1]) || !"*".equals(fields[2])
+                || !"*".equals(fields[3]) || !"*".equals(fields[4])) {
+            return null;
+        }
+        if ("*".equals(fields[0])) {
+            return 60L;
+        }
+        if ("0".equals(fields[0])) {
+            return 3600L;
+        }
+        if (!fields[0].startsWith("*/")) {
+            return null;
+        }
+        try {
+            long minutes = Long.parseLong(fields[0].substring(2));
+            if (!isExactRuntimeMaintenanceIntervalMinutes(minutes)) {
+                return null;
+            }
+            return minutes * 60L;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static boolean isExactRuntimeMaintenanceIntervalMinutes(long minutes) {
+        return minutes >= 1L && minutes <= 60L && 60L % minutes == 0L;
     }
 
     private static void normalizeLoadStrategy(PluginRuntimeSetting setting) {
@@ -227,6 +348,9 @@ public final class RuntimeSystemAutomations {
             normalized.setIdleStopEnabled(setting.getIdleStopEnabled());
             normalized.setIdleTimeoutSeconds(setting.getIdleTimeoutSeconds());
             normalized.setIdleScanIntervalSeconds(setting.getIdleScanIntervalSeconds());
+            normalized.setMaxRunningPlugins(setting.getMaxRunningPlugins());
+            normalized.setMaxConcurrentStarts(setting.getMaxConcurrentStarts());
+            normalized.setStartFailureBackoffSeconds(setting.getStartFailureBackoffSeconds());
         }
         normalizeLoadStrategy(normalized);
         return normalized;

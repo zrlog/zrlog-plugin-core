@@ -4,6 +4,7 @@ import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginBootstrapServi
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginHostConnection;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
+import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 
 import java.util.Objects;
 
@@ -32,5 +33,9 @@ public final class PluginRuntimeBridge {
 
     public static PluginHostConnection hostConnection() {
         return current.hostConnection();
+    }
+
+    public static PluginStartCoordinator pluginStarts() {
+        return current.pluginStarts();
     }
 }

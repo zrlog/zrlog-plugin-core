@@ -1,9 +1,11 @@
 package com.zrlog.plugincore.server.web.config;
 
+import com.hibegin.common.HybridStorage;
 import com.hibegin.http.server.config.AbstractServerConfig;
 import com.hibegin.http.server.config.RequestConfig;
 import com.hibegin.http.server.config.ResponseConfig;
 import com.hibegin.http.server.config.ServerConfig;
+import com.hibegin.http.server.util.PathUtil;
 import com.hibegin.http.server.web.MethodInterceptor;
 import com.zrlog.plugin.RunConstants;
 import com.zrlog.plugin.type.RunType;
@@ -22,9 +24,21 @@ import com.zrlog.plugincore.server.web.handler.PluginHandle;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PluginHttpServerConfig extends AbstractServerConfig {
+
+    static final int MAX_REQUEST_BODY_SIZE = 4 * 1024 * 1024;
+    static final int REQUEST_THREADS = 4;
+    static final int REQUEST_QUEUE_CAPACITY = 16;
+    static final int DECODE_THREADS = 2;
+    static final int DECODE_QUEUE_CAPACITY = 16;
+    static final int REQUEST_TIMEOUT_SECONDS = 660;
+    static final long REQUEST_STORAGE_MEMORY_THRESHOLD = 256L * 1024L;
 
     private final Integer port;
 
@@ -62,6 +76,8 @@ public class PluginHttpServerConfig extends AbstractServerConfig {
         serverConfig.setPort(port);
         serverConfig.setDisableSession(true);
         serverConfig.setDisableSavePidFile(true);
+        serverConfig.setTimeout(REQUEST_TIMEOUT_SECONDS);
+        serverConfig.setHybridStorage(new HybridStorage(REQUEST_STORAGE_MEMORY_THRESHOLD, PathUtil.getTempPath()));
         serverConfig.getInterceptors().add(PluginInterceptor.class);
         serverConfig.getInterceptors().add(MethodInterceptor.class);
         serverConfig.addErrorHandle(404, new PluginHandle());
@@ -74,11 +90,44 @@ public class PluginHttpServerConfig extends AbstractServerConfig {
             addPageMappers(serverConfig, basePath);
             serverConfig.addStaticResourceMapper(basePath + "/static", "/static/static");
         }
-        serverConfig.setRequestExecutor(Executors.newFixedThreadPool(50));
-        serverConfig.setDecodeExecutor(Executors.newFixedThreadPool(10));
+        serverConfig.setRequestExecutor(newRequestExecutor());
+        serverConfig.setDecodeExecutor(newDecodeExecutor());
         //optimize cpu usage
         serverConfig.setSelectNowSleepTime(200);
         return serverConfig;
+    }
+
+    static ThreadPoolExecutor newRequestExecutor() {
+        return new ThreadPoolExecutor(
+                REQUEST_THREADS,
+                REQUEST_THREADS,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(REQUEST_QUEUE_CAPACITY),
+                namedThreadFactory("plugin-http-request-"),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+    }
+
+    static ThreadPoolExecutor newDecodeExecutor() {
+        return new ThreadPoolExecutor(
+                DECODE_THREADS,
+                DECODE_THREADS,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(DECODE_QUEUE_CAPACITY),
+                namedThreadFactory("plugin-http-decode-"),
+                new ThreadPoolExecutor.CallerRunsPolicy()
+        );
+    }
+
+    private static ThreadFactory namedThreadFactory(String prefix) {
+        AtomicInteger threadNumber = new AtomicInteger(1);
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + threadNumber.getAndIncrement());
+            thread.setDaemon(false);
+            return thread;
+        };
     }
 
     /**
@@ -133,6 +182,7 @@ public class PluginHttpServerConfig extends AbstractServerConfig {
     public RequestConfig getRequestConfig() {
         RequestConfig requestConfig = new RequestConfig();
         requestConfig.setDisableSession(true);
+        requestConfig.setMaxRequestBodySize(MAX_REQUEST_BODY_SIZE);
         return requestConfig;
     }
 

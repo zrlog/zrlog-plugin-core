@@ -6,10 +6,14 @@ import com.zrlog.plugincore.server.runtime.lock.DistributedLock;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
 import com.zrlog.plugincore.server.type.PluginStatus;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -341,11 +345,9 @@ public class PluginRuntimeStateStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        PluginRuntimeStateDocument document = gson.fromJson(json.get(), PluginRuntimeStateDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<PluginRuntimeState>());
-        }
-        return document;
+        PersistentJsonLimits.requireUtf8Length("Plugin runtime state document", json.get(),
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return normalizeErrorMessages(gson.fromJson(json.get(), PluginRuntimeStateDocument.class));
     }
 
     public void saveDocument(PluginRuntimeStateDocument document) {
@@ -366,13 +368,79 @@ public class PluginRuntimeStateStore {
     }
 
     private String documentJson(PluginRuntimeStateDocument document) {
+        document = normalizeErrorMessages(document);
         document.setSchema(KEY);
         document.setVersion(1);
         document.setUpdatedAt(RuntimeDates.nowString());
         for (PluginRuntimeState item : document.getItems()) {
-            item.setEffectiveStatus(null);
+            if (item != null) {
+                item.setEffectiveStatus(null);
+            }
         }
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Plugin runtime state document", json,
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private PluginRuntimeStateDocument normalizeErrorMessages(PluginRuntimeStateDocument document) {
+        if (document == null) {
+            document = new PluginRuntimeStateDocument();
+        }
+        List<PluginRuntimeState> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<PluginRuntimeState>());
+            return document;
+        }
+        List<PluginRuntimeState> items = new ArrayList<PluginRuntimeState>(currentItems.size());
+        for (PluginRuntimeState state : currentItems) {
+            if (state == null) {
+                continue;
+            }
+            state.setLastError(RuntimeTextLimits.truncateErrorMessage(state.getLastError()));
+            List<PluginRuntimeInstanceState> currentInstances = state.getInstances();
+            List<PluginRuntimeInstanceState> instances = new ArrayList<PluginRuntimeInstanceState>(
+                    currentInstances == null ? 0 : currentInstances.size());
+            if (currentInstances != null) {
+                for (PluginRuntimeInstanceState instance : currentInstances) {
+                    if (instance != null) {
+                        instance.setLastError(RuntimeTextLimits.truncateErrorMessage(instance.getLastError()));
+                        normalizeActiveInvocations(instance);
+                        instances.add(instance);
+                    }
+                }
+            }
+            state.setInstances(instances);
+            items.add(state);
+        }
+        document.setItems(items);
+        return document;
+    }
+
+    private void normalizeActiveInvocations(PluginRuntimeInstanceState instance) {
+        Set<String> currentInvocationIds = instance.getActiveInvocationIds();
+        if (currentInvocationIds == null) {
+            return;
+        }
+        List<String> validInvocationIds = new ArrayList<String>(currentInvocationIds.size());
+        for (String invocationId : currentInvocationIds) {
+            if (invocationId != null && !invocationId.trim().isEmpty()) {
+                validInvocationIds.add(invocationId);
+            }
+        }
+        Collections.sort(validInvocationIds);
+        int retainedCount = Math.min(validInvocationIds.size(),
+                PluginRuntimeStateService.MAX_ACTIVE_INVOCATION_IDS);
+        Set<String> normalizedInvocationIds = new LinkedHashSet<String>(retainedCount);
+        for (int i = 0; i < retainedCount; i++) {
+            normalizedInvocationIds.add(validInvocationIds.get(i));
+        }
+        int currentActiveCount = instance.getActiveInvocationCount() == null
+                ? validInvocationIds.size() : Math.max(instance.getActiveInvocationCount(), 0);
+        long legacyInvocationCount = Math.max((long) currentActiveCount - validInvocationIds.size(), 0L);
+        long normalizedActiveCount = legacyInvocationCount + normalizedInvocationIds.size();
+        instance.setActiveInvocationIds(normalizedInvocationIds);
+        instance.setActiveInvocationCount((int) Math.min(normalizedActiveCount, Integer.MAX_VALUE));
     }
 
     private interface StoreMutation<T> {

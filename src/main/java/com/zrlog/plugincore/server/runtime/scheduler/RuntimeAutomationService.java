@@ -7,15 +7,18 @@ import com.zrlog.plugin.common.CronParseException;
 import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 
+import java.math.BigDecimal;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class RuntimeAutomationService {
@@ -26,6 +29,7 @@ public class RuntimeAutomationService {
     private final CapabilityStore capabilityStore;
     private final BasicCronParser cronParser;
     private final Supplier<PluginRuntimeSetting> runtimeSettingSupplier;
+    private final Consumer<PluginRuntimeSetting> runtimeSettingUpdater;
 
     public RuntimeAutomationService(AutomationStore automationStore, CapabilityStore capabilityStore, BasicCronParser cronParser) {
         this(automationStore, capabilityStore, cronParser, PluginRuntimeSetting::new);
@@ -43,10 +47,20 @@ public class RuntimeAutomationService {
                              CapabilityStore capabilityStore,
                              BasicCronParser cronParser,
                              Supplier<PluginRuntimeSetting> runtimeSettingSupplier) {
+        this(automationStore, capabilityStore, cronParser, runtimeSettingSupplier,
+                RuntimeAutomationService::persistRuntimeSetting);
+    }
+
+    RuntimeAutomationService(AutomationStore automationStore,
+                             CapabilityStore capabilityStore,
+                             BasicCronParser cronParser,
+                             Supplier<PluginRuntimeSetting> runtimeSettingSupplier,
+                             Consumer<PluginRuntimeSetting> runtimeSettingUpdater) {
         this.automationStore = automationStore;
         this.capabilityStore = capabilityStore;
         this.cronParser = cronParser;
         this.runtimeSettingSupplier = runtimeSettingSupplier;
+        this.runtimeSettingUpdater = runtimeSettingUpdater;
     }
 
     public List<PluginAutomation> list() {
@@ -185,6 +199,13 @@ public class RuntimeAutomationService {
         throw new IllegalStateException("Failed to save automation due to concurrent modification");
     }
 
+    public PluginAutomation saveRuntimeMaintenance(PluginRuntimeSetting runtimeSetting, ZonedDateTime now) {
+        PluginAutomation input = new PluginAutomation();
+        input.setId(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID);
+        input.setPayload(RuntimeSystemAutomations.runtimePayload(runtimeSetting));
+        return saveSystemAutomation(input, now);
+    }
+
     private PluginAutomation saveSystemAutomation(PluginAutomation input, ZonedDateTime now) {
         ZoneId zoneId = ZoneId.systemDefault();
         if (now == null) {
@@ -212,22 +233,38 @@ public class RuntimeAutomationService {
                 next.add(saved);
             }
             if (sameAutomationItems(automations, next)) {
+                updateRuntimeSetting(saved);
                 return saved;
             }
             snapshot.getDocument().setItems(next);
             if (automationStore.saveDocumentIfUnchanged(snapshot)) {
-                PluginRuntimeSetting runtimeSetting = RuntimeSystemAutomations.runtimeSettingFromPayload(saved.getPayload());
-                PluginCoreDAO.getInstance().update(pluginCore -> {
-                    pluginCore.getSetting().setAutoDownloadMissingPluginFileEnabled(runtimeSetting.getAutoDownloadMissingPluginFileEnabled());
-                    PluginRuntimeSetting runtime = pluginCore.getSetting().getRuntime();
-                    runtime.setOnDemandEnabled(runtimeSetting.getOnDemandEnabled());
-                    runtime.setIdleStopEnabled(runtimeSetting.getIdleStopEnabled());
-                    runtime.setIdleTimeoutSeconds(runtimeSetting.getIdleTimeoutSeconds());
-                });
+                updateRuntimeSetting(saved);
                 return saved;
             }
         }
         throw new IllegalStateException("Failed to save system automation due to concurrent modification");
+    }
+
+    private void updateRuntimeSetting(PluginAutomation automation) {
+        runtimeSettingUpdater.accept(RuntimeSystemAutomations.runtimeSettingFromPayload(automation.getPayload()));
+    }
+
+    private static void persistRuntimeSetting(PluginRuntimeSetting runtimeSetting) {
+        PluginCoreDAO.getInstance().update(pluginCore -> {
+            pluginCore.getSetting().setAutoDownloadMissingPluginFileEnabled(
+                    runtimeSetting.getAutoDownloadMissingPluginFileEnabled());
+            applyRuntimeSetting(pluginCore.getSetting().getRuntime(), runtimeSetting);
+        });
+    }
+
+    static void applyRuntimeSetting(PluginRuntimeSetting target, PluginRuntimeSetting source) {
+        target.setOnDemandEnabled(source.getOnDemandEnabled());
+        target.setIdleStopEnabled(source.getIdleStopEnabled());
+        target.setIdleTimeoutSeconds(source.getIdleTimeoutSeconds());
+        target.setIdleScanIntervalSeconds(source.getIdleScanIntervalSeconds());
+        target.setMaxRunningPlugins(source.getMaxRunningPlugins());
+        target.setMaxConcurrentStarts(source.getMaxConcurrentStarts());
+        target.setStartFailureBackoffSeconds(source.getStartFailureBackoffSeconds());
     }
 
     public boolean delete(String id) {
@@ -490,7 +527,51 @@ public class RuntimeAutomationService {
                 && Objects.equals(left.getLastRunAt(), right.getLastRunAt())
                 && Objects.equals(left.getLeaseOwner(), right.getLeaseOwner())
                 && Objects.equals(left.getLeaseUntil(), right.getLeaseUntil())
-                && Objects.equals(left.getPayload(), right.getPayload());
+                && samePayloadValue(left.getPayload(), right.getPayload());
+    }
+
+    private boolean samePayloadValue(Object left, Object right) {
+        if (left == right) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        if (left instanceof Number && right instanceof Number) {
+            try {
+                return new BigDecimal(left.toString()).compareTo(new BigDecimal(right.toString())) == 0;
+            } catch (NumberFormatException ignored) {
+                return Objects.equals(left, right);
+            }
+        }
+        if (left instanceof Map && right instanceof Map) {
+            Map<?, ?> leftMap = (Map<?, ?>) left;
+            Map<?, ?> rightMap = (Map<?, ?>) right;
+            if (leftMap.size() != rightMap.size()) {
+                return false;
+            }
+            for (Map.Entry<?, ?> entry : leftMap.entrySet()) {
+                if (!rightMap.containsKey(entry.getKey())
+                        || !samePayloadValue(entry.getValue(), rightMap.get(entry.getKey()))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (left instanceof List && right instanceof List) {
+            List<?> leftList = (List<?>) left;
+            List<?> rightList = (List<?>) right;
+            if (leftList.size() != rightList.size()) {
+                return false;
+            }
+            for (int i = 0; i < leftList.size(); i++) {
+                if (!samePayloadValue(leftList.get(i), rightList.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return Objects.equals(left, right);
     }
 
     private String defaultAutomationId(PluginCapability capability) {

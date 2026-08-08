@@ -24,15 +24,36 @@ public class CapabilityRegistrationService {
     }
 
     public List<PluginCapability> registerCapabilitiesFromInitPayload(Plugin plugin, String initPayload) {
+        List<PluginCapability> capabilities = prepareCapabilitiesFromInitPayload(plugin, initPayload);
+        registerPreparedCapabilities(plugin, capabilities);
+        return capabilities;
+    }
+
+    public List<PluginCapability> prepareCapabilitiesFromInitPayload(Plugin plugin, String initPayload) {
         if (plugin == null) {
             return new ArrayList<>();
         }
         List<PluginCapability> capabilities = parseExplicitCapabilities(plugin, initPayload);
         if (capabilities.isEmpty()) {
-            capabilities = capabilitiesFromPlugin(plugin);
+            return prepareCapabilities(plugin);
         }
+        return capabilities;
+    }
+
+    public List<PluginCapability> prepareCapabilities(Plugin plugin) {
+        if (plugin == null) {
+            return new ArrayList<>();
+        }
+        List<PluginCapability> capabilities = capabilitiesFromPlugin(plugin);
         if (capabilities.isEmpty()) {
             capabilities = legacyCapabilities(plugin);
+        }
+        return capabilities;
+    }
+
+    public void registerPreparedCapabilities(Plugin plugin, List<PluginCapability> capabilities) {
+        if (plugin == null) {
+            return;
         }
         String pluginId = plugin.getId();
         if (pluginId != null) {
@@ -40,7 +61,6 @@ public class CapabilityRegistrationService {
                     Arrays.asList(plugin.getShortName(), PluginSessions.nameOrShortName(plugin)),
                     capabilities);
         }
-        return capabilities;
     }
 
     public List<PluginCapability> legacyCapabilities(Plugin plugin) {

@@ -40,6 +40,7 @@ import com.zrlog.plugincore.server.runtime.state.DefaultPluginRuntimeStarter;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore;
 import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
 import com.zrlog.plugincore.server.util.HttpUtils;
 import com.zrlog.plugincore.server.util.PublicInfoLoader;
 import com.zrlog.plugincore.server.vo.PluginVO;
@@ -56,11 +57,21 @@ public class ServerActionHandler implements IActionHandler {
 
     private static final Logger LOGGER = LoggerUtil.getLogger(ServerActionHandler.class);
 
+    private final ServiceInvocationDispatcher serviceInvocationDispatcher;
+
+    public ServerActionHandler() {
+        this(null);
+    }
+
+    ServerActionHandler(ServiceInvocationDispatcher serviceInvocationDispatcher) {
+        this.serviceInvocationDispatcher = serviceInvocationDispatcher;
+    }
+
     @Override
     public void service(final IOSession session, final MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
             if (msgPacket.getStatus() == MsgPacketStatus.SEND_REQUEST) {
-                new ServiceMsgPacketHandler(session).doHandle(msgPacket);
+                new ServiceMsgPacketHandler(session, serviceInvocationDispatcher).doHandle(msgPacket);
             }
         }
     }
@@ -84,17 +95,50 @@ public class ServerActionHandler implements IActionHandler {
 
     @Override
     public void initConnect(IOSession session, MsgPacket msgPacket) {
-        Plugin plugin = new Gson().fromJson(msgPacket.getDataStr(), Plugin.class);
-        plugin.setId(Objects.requireNonNullElse(plugin.getId(), UUID.randomUUID().toString()));
+        if (session.getPlugin() != null) {
+            rejectPluginConnection(session, msgPacket, "Plugin session is already initialized");
+            return;
+        }
+        PluginInitPayloadValidator validator = new PluginInitPayloadValidator();
+        PluginInitPayloadValidator.ValidatedPayload validatedPayload;
+        Plugin plugin;
+        try {
+            validatedPayload = validator.parse(msgPacket);
+            plugin = validatedPayload.getPlugin();
+            plugin.setId(Objects.requireNonNullElse(plugin.getId(), UUID.randomUUID().toString()));
+            validator.validatePlugin(plugin);
+        } catch (IllegalArgumentException e) {
+            rejectPluginConnection(session, msgPacket, e.getMessage());
+            return;
+        }
+        if (!EnvKit.isDevMode() && !pluginBootstrap().hasManagedProcessSlot(plugin)) {
+            rejectPluginConnection(session, msgPacket,
+                    "Plugin connection is not associated with a managed process");
+            return;
+        }
+        String pluginName = PluginSessions.nameOrShortName(plugin);
+        WebsiteRuntimeKvStore kvStore = new WebsiteRuntimeKvStore();
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        CapabilityRegistrationService capabilityRegistrationService =
+                new CapabilityRegistrationService(capabilityStore);
+        List<PluginCapability> capabilities;
+        try {
+            capabilities = capabilityRegistrationService.prepareCapabilities(plugin);
+            validator.validateCapabilities(capabilities);
+            PluginCoreDAO.getInstance().validatePluginRegistration(plugin);
+            capabilityStore.validatePluginCapabilitiesReplacement(plugin.getId(),
+                    Arrays.asList(plugin.getShortName(), pluginName), capabilities);
+        } catch (RuntimeException e) {
+            LOGGER.log(Level.WARNING, "Unable to validate plugin initialization persistence", e);
+            rejectPluginConnection(session, msgPacket, pluginInitializationError(e));
+            return;
+        }
         PluginLogContext.bind(session, plugin);
         session.setPlugin(plugin);
         try (PluginLogContext.Scope ignored = PluginLogContext.open(plugin)) {
-            String pluginName = PluginSessions.nameOrShortName(plugin);
-            WebsiteRuntimeKvStore kvStore = new WebsiteRuntimeKvStore();
-            CapabilityStore capabilityStore = new CapabilityStore(kvStore);
-            List<PluginCapability> capabilities;
             try {
-                capabilities = initializePluginLifecycle(session, msgPacket, plugin, pluginName, kvStore, capabilityStore);
+                initializePluginLifecycle(session, msgPacket, plugin, pluginName, kvStore,
+                        capabilityRegistrationService, capabilities);
             } catch (RuntimeException e) {
                 failPluginLifecycleInitialization(session, msgPacket, plugin, pluginName, runtimeStateService(kvStore, session), e);
                 return;
@@ -104,21 +148,38 @@ public class ServerActionHandler implements IActionHandler {
         }
     }
 
+    private String pluginInitializationError(RuntimeException e) {
+        String message = e.getMessage();
+        if (message == null || message.trim().isEmpty()) {
+            return "Unable to validate plugin initialization payload";
+        }
+        return RuntimeTextLimits.truncateErrorMessage(message);
+    }
+
+    private void rejectPluginConnection(IOSession session, MsgPacket msgPacket, String message) {
+        LOGGER.warning(PluginLogContext.prefix(message));
+        session.sendJsonMsg(PluginTransportModels.InitErrorResponse.error(message),
+                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+        session.close();
+    }
+
     private List<PluginCapability> initializePluginLifecycle(IOSession session,
                                                              MsgPacket msgPacket,
                                                              Plugin plugin,
                                                              String pluginName,
                                                              WebsiteRuntimeKvStore kvStore,
-                                                             CapabilityStore capabilityStore) {
+                                                             CapabilityRegistrationService capabilityRegistrationService,
+                                                             List<PluginCapability> capabilities) {
         pluginBootstrap().registerPlugin(session);
         PluginRuntimeStateService stateService = runtimeStateService(kvStore, session);
         Long processId = PluginSessions.processId(session);
         stateService.markInitializing(plugin.getId(), pluginName, null, processId);
-        List<PluginCapability> capabilities = new CapabilityRegistrationService(capabilityStore)
-                .registerCapabilitiesFromInitPayload(plugin, msgPacket.getDataStr());
+        capabilityRegistrationService.registerPreparedCapabilities(plugin, capabilities);
         stateService.markReady(plugin.getId(), pluginName, processId);
         session.sendJsonMsg(new PluginTransportModels.InitResponse(RunConstants.runType.toString()),
                 msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+        pluginBootstrap().markPluginReady(session);
+        PluginSessions.markReady(session);
         return capabilities;
     }
 

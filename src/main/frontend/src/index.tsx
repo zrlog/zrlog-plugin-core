@@ -38,6 +38,9 @@ export interface PluginRuntimeSetting {
     idleStopEnabled?: boolean
     idleTimeoutSeconds?: number
     idleScanIntervalSeconds?: number
+    maxRunningPlugins?: number
+    maxConcurrentStarts?: number
+    startFailureBackoffSeconds?: number
 }
 
 export interface Plugin {

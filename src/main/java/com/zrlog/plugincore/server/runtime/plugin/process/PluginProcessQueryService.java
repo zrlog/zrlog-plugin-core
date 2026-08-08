@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.plugin.process;
 
 import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.ResponseLease;
 import com.zrlog.plugin.data.codec.ContentType;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
@@ -85,11 +86,11 @@ public class PluginProcessQueryService {
 
     private static PluginProcessInfo requestProcessInfo(IOSession session, Duration timeout) {
         int msgId = session.queryPluginProcess(null, timeout);
-        try {
-            MsgPacket response = session.getResponseMsgPacketByMsgId(msgId, timeout);
-            if (response == null) {
+        try (ResponseLease responseLease = session.getResponseLeaseByMsgId(msgId, timeout)) {
+            if (responseLease == null) {
                 throw new IllegalStateException("Plugin process query timeout");
             }
+            MsgPacket response = responseLease.getPacket();
             if (response.getContentType() != ContentType.JSON) {
                 throw new IllegalStateException("Unsupported plugin process response " + response.getContentType());
             }
@@ -104,8 +105,6 @@ public class PluginProcessQueryService {
                 info.setAlive(response.getStatus() == MsgPacketStatus.RESPONSE_SUCCESS);
             }
             return info;
-        } finally {
-            session.getPipeMap().remove(msgId);
         }
     }
 

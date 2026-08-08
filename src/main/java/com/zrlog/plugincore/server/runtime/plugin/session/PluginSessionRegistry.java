@@ -5,6 +5,7 @@ import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.runtime.plugin.log.PluginLogContext;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStates;
+import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.util.StringUtils;
 import com.zrlog.plugincore.server.vo.PluginVO;
 
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -23,34 +25,53 @@ public class PluginSessionRegistry {
 
     public static final String SESSION_ID_ATTR = "_zrlog_session_id";
     public static final String PROCESS_ID_ATTR = "_zrlog_process_id";
+    public static final String READY_ATTR = "_zrlog_ready";
+    private static final long DEMAND_CLAIM_MS = 30000L;
+    private static final long READY_SESSION_OPERATION_WAIT_MS = 30000L;
 
     private final List<IOSession> localSessions = new CopyOnWriteArrayList<>();
     private final SessionStopMarker sessionStopMarker;
     private final PluginSessionHeartbeat heartbeat;
     private final Map<String, String> requiredPlugins;
     private final Function<Plugin, Boolean> pluginStarter;
+    private final PluginStartCoordinator startCoordinator;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
 
     public PluginSessionRegistry() {
-        this(Collections.emptyMap());
+        this(Collections.emptyMap(), new PluginStartCoordinator());
     }
 
     public PluginSessionRegistry(Map<String, String> requiredPlugins) {
-        this(PluginRuntimeStates::markStoppedIfCurrent, null, requiredPlugins, PluginRuntimeStates::ensureStarted);
+        this(requiredPlugins, new PluginStartCoordinator());
+    }
+
+    public PluginSessionRegistry(Map<String, String> requiredPlugins, PluginStartCoordinator startCoordinator) {
+        this(PluginRuntimeStates::markStoppedIfCurrent, null, requiredPlugins,
+                PluginRuntimeStates::ensureStarted, startCoordinator);
     }
 
     PluginSessionRegistry(SessionStopMarker sessionStopMarker) {
-        this(sessionStopMarker, PluginSessionHeartbeat.disabled());
+        this(sessionStopMarker, PluginSessionHeartbeat.disabled(), Collections.emptyMap(),
+                PluginRuntimeStates::ensureStarted, new PluginStartCoordinator());
     }
 
     PluginSessionRegistry(SessionStopMarker sessionStopMarker, PluginSessionHeartbeat heartbeat) {
-        this(sessionStopMarker, heartbeat, Collections.emptyMap(), PluginRuntimeStates::ensureStarted);
+        this(sessionStopMarker, heartbeat, Collections.emptyMap(),
+                PluginRuntimeStates::ensureStarted, new PluginStartCoordinator());
     }
 
     PluginSessionRegistry(SessionStopMarker sessionStopMarker, PluginSessionHeartbeat heartbeat,
                           Map<String, String> requiredPlugins, Function<Plugin, Boolean> pluginStarter) {
+        this(sessionStopMarker, heartbeat, requiredPlugins, pluginStarter, new PluginStartCoordinator());
+    }
+
+    PluginSessionRegistry(SessionStopMarker sessionStopMarker, PluginSessionHeartbeat heartbeat,
+                          Map<String, String> requiredPlugins, Function<Plugin, Boolean> pluginStarter,
+                          PluginStartCoordinator startCoordinator) {
         this.sessionStopMarker = sessionStopMarker == null ? PluginRuntimeStates::markStoppedIfCurrent : sessionStopMarker;
         this.requiredPlugins = requiredPlugins == null ? Collections.emptyMap() : new HashMap<>(requiredPlugins);
         this.pluginStarter = pluginStarter == null ? PluginRuntimeStates::ensureStarted : pluginStarter;
+        this.startCoordinator = startCoordinator == null ? new PluginStartCoordinator() : startCoordinator;
         this.heartbeat = heartbeat == null
                 ? PluginSessionHeartbeat.active(this::getAllLocalSessions, this::closeLocalSession)
                 : heartbeat;
@@ -92,6 +113,25 @@ public class PluginSessionRegistry {
         return getLocalSessionByPluginId(pluginId) != null;
     }
 
+    public boolean isReadyByPluginId(String pluginId) {
+        for (IOSession session : getLocalSessionsByPluginId(pluginId)) {
+            if (isReady(session)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isReady(IOSession session) {
+        return session != null && Boolean.TRUE.equals(session.getSystemAttr().get(READY_ATTR));
+    }
+
+    public void markReady(IOSession session) {
+        if (session != null) {
+            session.getSystemAttr().put(READY_ATTR, Boolean.TRUE);
+        }
+    }
+
     public boolean isRunningByPluginShortName(String pluginShortName) {
         return getLocalSessionByPluginShortName(pluginShortName) != null;
     }
@@ -102,22 +142,37 @@ public class PluginSessionRegistry {
         }
     }
 
+    public IOSession getReadyLocalSessionByPluginShortName(String pluginShortName) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(null, pluginShortName, pluginShortName)) {
+            return firstOpenLocalSession(session -> matchesPluginShortName(session, pluginShortName) && isReady(session));
+        }
+    }
+
     public IOSession getOrStartLocalSessionByPluginShortName(String pluginShortName) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(null, pluginShortName, pluginShortName)) {
-            IOSession session = getLocalSessionByPluginShortName(pluginShortName);
-            if (session != null) {
-                return session;
-            }
+            IOSession initializingSession = getLocalSessionByPluginShortName(pluginShortName);
             Plugin plugin = pluginForStart(pluginShortName);
+            if (plugin == null && initializingSession != null) {
+                plugin = initializingSession.getPlugin();
+            }
             if (plugin == null) {
                 return null;
             }
             try (PluginLogContext.Scope pluginScope = PluginLogContext.open(plugin)) {
+                IOSession readySession = claimReadyLocalSessionByPluginId(plugin.getId());
+                if (readySession != null) {
+                    return readySession;
+                }
                 if (!pluginStarter.apply(plugin)) {
                     return null;
                 }
-                IOSession startedSession = getLocalSessionByPluginId(plugin.getId());
-                return startedSession == null ? getLocalSessionByPluginShortName(pluginShortName) : startedSession;
+                IOSession startedSession = claimReadyLocalSessionByPluginId(plugin.getId());
+                if (startedSession != null) {
+                    return startedSession;
+                }
+                IOSession shortNameSession = getReadyLocalSessionByPluginShortName(pluginShortName);
+                return shortNameSession == null || shortNameSession.getPlugin() == null
+                        ? null : claimReadyLocalSessionByPluginId(shortNameSession.getPlugin().getId());
             }
         }
     }
@@ -145,6 +200,24 @@ public class PluginSessionRegistry {
     public IOSession getLocalSessionByPluginId(String pluginId) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, null, null)) {
             return firstOpenLocalSession(session -> matchesPluginId(session, pluginId));
+        }
+    }
+
+    public IOSession getReadyLocalSessionByPluginId(String pluginId) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, null, null)) {
+            return firstOpenLocalSession(session -> matchesPluginId(session, pluginId) && isReady(session));
+        }
+    }
+
+    public IOSession claimReadyLocalSessionByPluginId(String pluginId) {
+        return claimReadyLocalSessionByPluginId(pluginId, READY_SESSION_OPERATION_WAIT_MS);
+    }
+
+    public IOSession claimReadyLocalSessionByPluginId(String pluginId, long operationWaitTimeoutMs) {
+        try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, null, null)) {
+            getReadyLocalSessionByPluginId(pluginId);
+            return startCoordinator.claimDemandAndGet(pluginId, DEMAND_CLAIM_MS, operationWaitTimeoutMs,
+                    () -> getReadyLocalSessionByPluginId(pluginId));
         }
     }
 
@@ -182,13 +255,34 @@ public class PluginSessionRegistry {
             if (session == null || session.getPlugin() == null || StringUtils.isEmpty(session.getPlugin().getId())) {
                 return;
             }
+            if (shutdown.get()) {
+                session.close();
+                return;
+            }
             sessionId(session);
             heartbeat.start();
             heartbeat.register(session);
             if (!localSessions.contains(session)) {
                 localSessions.add(session);
             }
+            if (shutdown.get()) {
+                closeLocalSession(session);
+            }
         }
+    }
+
+    public void shutdown() {
+        if (!shutdown.compareAndSet(false, true)) {
+            return;
+        }
+        heartbeat.shutdown();
+        for (IOSession session : getAllLocalSessions()) {
+            closeLocalSession(session);
+        }
+    }
+
+    public boolean isShutdown() {
+        return shutdown.get();
     }
 
     public void removeLocalSession(IOSession session) {

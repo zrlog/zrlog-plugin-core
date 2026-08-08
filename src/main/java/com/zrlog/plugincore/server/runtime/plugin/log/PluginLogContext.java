@@ -4,13 +4,22 @@ import com.hibegin.common.dao.DaoLogContext;
 import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.message.Plugin;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public final class PluginLogContext {
 
     private static final String PLUGIN_LOG_LABEL_ATTR = "_zrlog_plugin_log_label";
-    private static final Map<String, String> SHORT_NAMES_BY_PLUGIN_ID = new ConcurrentHashMap<>();
+    static final int MAX_CACHED_PLUGIN_LABELS = 256;
+    static final int MAX_PLUGIN_LABEL_LENGTH = 128;
+    private static final Map<String, String> SHORT_NAMES_BY_PLUGIN_ID = Collections.synchronizedMap(
+            new LinkedHashMap<String, String>(MAX_CACHED_PLUGIN_LABELS, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > MAX_CACHED_PLUGIN_LABELS;
+                }
+            });
     private static final ThreadLocal<PluginLabel> CURRENT = new ThreadLocal<>();
 
     private PluginLogContext() {
@@ -21,7 +30,7 @@ public final class PluginLogContext {
             return open((Plugin) null);
         }
         Object label = session.getSystemAttr().get(PLUGIN_LOG_LABEL_ATTR);
-        String normalizedLabel = normalize(label == null ? null : label.toString());
+        String normalizedLabel = normalizeLabel(label == null ? null : label.toString());
         Plugin plugin = session.getPlugin();
         if (normalizedLabel != null) {
             if (plugin != null) {
@@ -40,9 +49,13 @@ public final class PluginLogContext {
     }
 
     public static void bind(IOSession session, String pluginId, String shortName) {
-        String normalizedShortName = normalize(shortName);
-        if (session != null && normalizedShortName != null) {
-            session.getSystemAttr().put(PLUGIN_LOG_LABEL_ATTR, normalizedShortName);
+        String normalizedShortName = normalizeLabel(shortName);
+        if (session != null) {
+            if (normalizedShortName == null) {
+                session.getSystemAttr().remove(PLUGIN_LOG_LABEL_ATTR);
+            } else {
+                session.getSystemAttr().put(PLUGIN_LOG_LABEL_ATTR, normalizedShortName);
+            }
         }
         register(pluginId, normalizedShortName);
     }
@@ -57,8 +70,8 @@ public final class PluginLogContext {
 
     public static Scope open(String pluginId, String shortName, String name) {
         PluginLabel previous = CURRENT.get();
-        String normalizedPluginId = normalize(pluginId);
-        String normalizedShortName = normalize(shortName);
+        String normalizedPluginId = normalizeLabel(pluginId);
+        String normalizedShortName = normalizeLabel(shortName);
         if (normalizedShortName == null && normalizedPluginId != null) {
             normalizedShortName = SHORT_NAMES_BY_PLUGIN_ID.get(normalizedPluginId);
         }
@@ -80,12 +93,28 @@ public final class PluginLogContext {
     }
 
     public static void register(String pluginId, String shortName) {
-        String normalizedPluginId = normalize(pluginId);
-        String normalizedShortName = normalize(shortName);
+        String normalizedPluginId = normalizeLabel(pluginId);
+        String normalizedShortName = normalizeLabel(shortName);
         if (normalizedPluginId == null || normalizedShortName == null) {
             return;
         }
         SHORT_NAMES_BY_PLUGIN_ID.put(normalizedPluginId, normalizedShortName);
+    }
+
+    static int cachedShortNameCount() {
+        return SHORT_NAMES_BY_PLUGIN_ID.size();
+    }
+
+    static void clearCachedShortNames() {
+        SHORT_NAMES_BY_PLUGIN_ID.clear();
+    }
+
+    private static String normalizeLabel(String value) {
+        String normalized = normalize(value);
+        if (normalized == null || normalized.length() > MAX_PLUGIN_LABEL_LENGTH) {
+            return null;
+        }
+        return normalized;
     }
 
     private static String normalize(String value) {
@@ -155,7 +184,7 @@ public final class PluginLogContext {
         }
 
         private static PluginLabel of(String shortName) {
-            String normalizedShortName = normalize(shortName);
+            String normalizedShortName = normalizeLabel(shortName);
             if (normalizedShortName == null) {
                 return null;
             }

@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime.scheduler;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+
 public class PluginAutomationRun {
 
     private String id;
@@ -81,6 +83,6 @@ public class PluginAutomationRun {
     }
 
     public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
+        this.errorMessage = RuntimeTextLimits.truncateErrorMessage(errorMessage);
     }
 }

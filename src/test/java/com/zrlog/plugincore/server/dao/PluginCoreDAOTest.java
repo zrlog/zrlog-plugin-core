@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server.dao;
 
 import com.google.gson.Gson;
 import com.zrlog.plugincore.server.model.PluginCore;
+import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import org.junit.Test;
 
@@ -25,7 +26,8 @@ public class PluginCoreDAOTest {
 
         assertEquals(1, dao.loadCalls);
         assertEquals(0, dao.casCalls);
-        assertEquals(raw, gson.toJson(updated));
+        assertEquals(PluginRuntimeSetting.DEFAULT_MAX_RUNNING_PLUGINS,
+                updated.getSetting().getRuntime().getMaxRunningPlugins().longValue());
     }
 
     @Test
@@ -41,6 +43,20 @@ public class PluginCoreDAOTest {
         assertEquals(raw, dao.casExpectedValue);
         assertEquals("remark-1", dao.casExpectedRemark);
         assertTrue(updated.getSetting().isDisableAutoDownloadLostFile());
+        assertEquals(gson.toJson(updated), dao.casValue);
+    }
+
+    @Test
+    public void shouldNormalizeRuntimeLimitsBeforePersisting() {
+        String raw = gson.toJson(new PluginCore());
+        FakePluginCoreDAO dao = new FakePluginCoreDAO(raw);
+
+        PluginCore updated = dao.update(pluginCore ->
+                pluginCore.getSetting().getRuntime().setMaxRunningPlugins(Long.MAX_VALUE));
+
+        assertEquals(1, dao.casCalls);
+        assertEquals(PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS,
+                updated.getSetting().getRuntime().getMaxRunningPlugins().longValue());
         assertEquals(gson.toJson(updated), dao.casValue);
     }
 

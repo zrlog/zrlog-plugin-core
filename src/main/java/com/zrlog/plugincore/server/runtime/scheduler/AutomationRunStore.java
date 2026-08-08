@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,7 @@ public class AutomationRunStore {
 
     private List<PluginAutomationRun> appendItems(List<PluginAutomationRun> currentItems, PluginAutomationRun run) {
         List<PluginAutomationRun> items = new ArrayList<>(currentItems);
+        normalizeRun(run);
         items.add(run);
         while (items.size() > MAX_ITEMS) {
             items.remove(0);
@@ -61,11 +64,9 @@ public class AutomationRunStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        AutomationRunDocument document = gson.fromJson(json.get(), AutomationRunDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<>());
-        }
-        return document;
+        PersistentJsonLimits.requireUtf8Length("Automation run document", json.get(),
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return normalizeDocument(gson.fromJson(json.get(), AutomationRunDocument.class));
     }
 
     public void saveDocument(AutomationRunDocument document) {
@@ -86,10 +87,43 @@ public class AutomationRunStore {
     }
 
     private String documentJson(AutomationRunDocument document) {
+        document = normalizeDocument(document);
         document.setSchema(KEY);
         document.setVersion(2);
         document.setUpdatedAt(RuntimeDates.nowString());
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Automation run document", json,
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private AutomationRunDocument normalizeDocument(AutomationRunDocument document) {
+        if (document == null) {
+            document = new AutomationRunDocument();
+        }
+        List<PluginAutomationRun> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<>());
+            return document;
+        }
+        int fromIndex = Math.max(0, currentItems.size() - MAX_ITEMS);
+        List<PluginAutomationRun> items = new ArrayList<>(currentItems.size() - fromIndex);
+        for (int i = fromIndex; i < currentItems.size(); i++) {
+            PluginAutomationRun run = currentItems.get(i);
+            if (run == null) {
+                continue;
+            }
+            normalizeRun(run);
+            items.add(run);
+        }
+        document.setItems(items);
+        return document;
+    }
+
+    private void normalizeRun(PluginAutomationRun run) {
+        if (run != null) {
+            run.setErrorMessage(RuntimeTextLimits.truncateErrorMessage(run.getErrorMessage()));
+        }
     }
 
     public static class AutomationRunDocumentSnapshot {

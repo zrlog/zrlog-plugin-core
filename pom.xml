@@ -188,7 +188,6 @@
                                 <arg>
                                     -Os
                                     --enable-sbom
-                                    -H:+BuildReport
                                     -H:+UnlockExperimentalVMOptions
                                     --allow-incomplete-classpath
                                     -H:-ReduceImplicitExceptionStackTraceInformation
@@ -200,6 +199,8 @@
                                     --enable-url-protocols=http
                                     --enable-url-protocols=https
                                     --enable-monitoring=heapdump
+                                    -R:MaxHeapSize=134217728
+                                    -R:+ExitOnOutOfMemoryError
                                 </arg>
                             </buildArgs>
                             <mainClass>${native.image.mainClass}</mainClass>

@@ -1,23 +1,31 @@
 package com.zrlog.plugincore.server.runtime.state;
 
 import com.zrlog.plugincore.server.runtime.plugin.log.PluginLogContext;
+import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
 import com.zrlog.plugincore.server.type.PluginStatus;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiConsumer;
 
 public class PluginRuntimeStateService {
 
     private static final long DEFAULT_START_WAIT_TIMEOUT_MS = 30000L;
     private static final long DEFAULT_START_WAIT_INTERVAL_MS = 100L;
+    private static final long DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS = 5000L;
+    private static final long DEFAULT_DEMAND_CLAIM_MS = 30000L;
+    private static final int INVOCATION_END_ATTEMPTS = 2;
+    static final int MAX_ACTIVE_INVOCATION_IDS = 256;
 
     private final PluginRuntimeStateStore stateStore;
     private final PluginRuntimeStarter starter;
     private final long startWaitTimeoutMs;
     private final long startWaitIntervalMs;
     private final String runtimeInstanceId;
+    private final PluginStartCoordinator startCoordinator;
 
     public PluginRuntimeStateService(PluginRuntimeStateStore stateStore, PluginRuntimeStarter starter) {
         this(stateStore, starter, DEFAULT_START_WAIT_TIMEOUT_MS, DEFAULT_START_WAIT_INTERVAL_MS,
@@ -42,61 +50,144 @@ public class PluginRuntimeStateService {
                                      long startWaitTimeoutMs,
                                      long startWaitIntervalMs,
                                      String runtimeInstanceId) {
+        this(stateStore, starter, startWaitTimeoutMs, startWaitIntervalMs, runtimeInstanceId,
+                PluginRuntimeBridge.pluginStarts());
+    }
+
+    PluginRuntimeStateService(PluginRuntimeStateStore stateStore,
+                              PluginRuntimeStarter starter,
+                              long startWaitTimeoutMs,
+                              long startWaitIntervalMs,
+                              String runtimeInstanceId,
+                              PluginStartCoordinator startCoordinator) {
         this.stateStore = stateStore;
         this.starter = starter;
         this.startWaitTimeoutMs = startWaitTimeoutMs;
         this.startWaitIntervalMs = startWaitIntervalMs;
         this.runtimeInstanceId = runtimeInstanceId;
+        this.startCoordinator = startCoordinator;
     }
 
     public boolean ensureStarted(String pluginId) {
-        if (starter.isStarted(pluginId)) {
-            return true;
+        if (isBlank(pluginId)) {
+            return false;
         }
         Optional<PluginIdentity> identity = starter.findPlugin(pluginId);
         if (!identity.isPresent()) {
-            markFailed(pluginId, null, "Plugin not registered");
             return false;
         }
         return ensureStarted(identity.get());
+    }
+
+    private boolean claimDemandIfReady(PluginIdentity identity) {
+        Boolean ready = startCoordinator.claimDemandAndGet(identity.getPluginId(), DEFAULT_DEMAND_CLAIM_MS,
+                startWaitTimeoutMs, () -> readyAndViable(identity));
+        return Boolean.TRUE.equals(ready);
     }
 
     public boolean ensureStarted(PluginIdentity identity) {
         if (identity == null || isBlank(identity.getPluginId())) {
             return false;
         }
-        if (starter.isStarted(identity.getPluginId())) {
+        if (claimDemandIfReady(identity)) {
             return true;
+        }
+        boolean started = startCoordinator.start(
+                identity.getPluginId(),
+                starter.maxConcurrentStarts(),
+                Math.min(startWaitTimeoutMs, DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS),
+                startWaitTimeoutMs + Math.min(startWaitTimeoutMs, DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS),
+                starter.startFailureBackoffMs(),
+                () -> startAndAwait(identity)
+        );
+        return started && claimDemandIfReady(identity);
+    }
+
+    private boolean startAndAwait(PluginIdentity identity) {
+        Optional<PluginIdentity> currentIdentity = starter.findPlugin(identity.getPluginId());
+        if (!currentIdentity.isPresent()
+                || !Objects.equals(identity.getPluginShortName(), currentIdentity.get().getPluginShortName())) {
+            throw new PluginStartDeferredException("Plugin identity changed before startup");
+        }
+        if (readyAndViable(identity)) {
+            return completeReady(identity);
+        }
+        if (startCoordinator.isStartCancellationRequested(identity.getPluginId())) {
+            return false;
         }
         if (!starter.managesRuntimeState()) {
             markStarting(identity.getPluginId(), identity.getPluginName(), starter.runtimeMode(identity));
         }
-        try {
-            starter.start(identity);
-        } catch (RuntimeException e) {
-            if (starter.managesRuntimeState()) {
-                starter.cleanupStartFailure(identity);
-            } else {
-                markFailed(identity.getPluginId(), identity.getPluginName(), e.getMessage());
+        if (!starter.isStarted(identity.getPluginId())) {
+            try {
+                startWithOneCapacityReclaim(identity);
+            } catch (PluginStartDeferredException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                if (starter.managesRuntimeState()) {
+                    starter.cleanupStartFailure(identity);
+                } else {
+                    markFailed(identity.getPluginId(), identity.getPluginName(), e.getMessage());
+                }
+                return false;
             }
-            return false;
         }
         long deadline = System.currentTimeMillis() + startWaitTimeoutMs;
         while (System.currentTimeMillis() < deadline) {
-            if (starter.isStarted(identity.getPluginId())) {
-                if (!starter.managesRuntimeState()) {
-                    markReady(identity.getPluginId(), identity.getPluginName());
-                }
-                return true;
+            if (startCoordinator.isStartCancellationRequested(identity.getPluginId())) {
+                return cleanupFailedStart(identity, "Plugin start cancelled");
             }
-            sleepQuietly();
+            if (!starter.isStartViable(identity)) {
+                return cleanupFailedStart(identity, "Plugin process exited during startup");
+            }
+            if (readyAndViable(identity)) {
+                return completeReady(identity);
+            }
+            if (!sleepQuietly()) {
+                return cleanupFailedStart(identity, "Plugin start interrupted");
+            }
         }
+        if (startCoordinator.isStartCancellationRequested(identity.getPluginId())) {
+            return cleanupFailedStart(identity, "Plugin start cancelled");
+        }
+        if (readyAndViable(identity)) {
+            return completeReady(identity);
+        }
+        return cleanupFailedStart(identity, starter.isStartViable(identity)
+                ? "Plugin start timeout"
+                : "Plugin process exited during startup");
+    }
+
+    private boolean readyAndViable(PluginIdentity identity) {
+        return starter.isReady(identity.getPluginId()) && starter.isStartViable(identity);
+    }
+
+    private boolean completeReady(PluginIdentity identity) {
+        startCoordinator.claimDemand(identity.getPluginId(), DEFAULT_DEMAND_CLAIM_MS);
         if (!starter.managesRuntimeState()) {
-            markFailed(identity.getPluginId(), identity.getPluginName(), "Plugin start timeout");
-        } else {
+            markReady(identity.getPluginId(), identity.getPluginName());
+        }
+        return true;
+    }
+
+    private boolean cleanupFailedStart(PluginIdentity identity, String message) {
+        if (starter.managesRuntimeState()) {
             starter.cleanupStartFailure(identity);
+        } else {
+            markFailed(identity.getPluginId(), identity.getPluginName(), message);
         }
         return false;
+    }
+
+    private void startWithOneCapacityReclaim(PluginIdentity identity) {
+        try {
+            starter.start(identity);
+        } catch (PluginStartDeferredException capacityFailure) {
+            if (!starter.reclaimIdleCapacity(identity)) {
+                throw capacityFailure;
+            }
+            starter.start(identity);
+        }
     }
 
     public void markStarting(String pluginId, String pluginName, String runtimeMode) {
@@ -114,7 +205,7 @@ public class PluginRuntimeStateService {
             instance.setStartedAt(now);
             instance.setLastActiveAt(now);
             PluginRuntimeLeases.renew(instance, now);
-            instance.setActiveInvocationCount(0);
+            resetActiveInvocations(instance);
             instance.setLastError(null);
         });
     }
@@ -153,7 +244,7 @@ public class PluginRuntimeStateService {
             instance.setReadyAt(now);
             instance.setLastActiveAt(now);
             PluginRuntimeLeases.renew(instance, now);
-            instance.setActiveInvocationCount(0);
+            resetActiveInvocations(instance);
             instance.setLastError(null);
         });
     }
@@ -177,6 +268,27 @@ public class PluginRuntimeStateService {
         });
     }
 
+    public void markInvocationStart(String pluginId, String pluginName, String invocationId) {
+        if (isBlank(invocationId)) {
+            markInvocationStart(pluginId, pluginName);
+            return;
+        }
+        update(pluginId, pluginName, (state, instance) -> {
+            long now = now();
+            normalizeInvocationLifecycleStatus(instance);
+            Set<String> invocationIds = activeInvocationIds(instance);
+            if (!invocationIds.contains(invocationId)
+                    && invocationIds.size() >= MAX_ACTIVE_INVOCATION_IDS) {
+                throw new IllegalStateException("Plugin invocation tracking capacity reached");
+            }
+            if (invocationIds.add(invocationId)) {
+                instance.setActiveInvocationCount(activeCount(instance) + 1);
+            }
+            instance.setLastActiveAt(now);
+            PluginRuntimeLeases.renew(instance, now);
+        });
+    }
+
     public void markInvocationEnd(String pluginId, String pluginName, String errorMessage) {
         update(pluginId, pluginName, (state, instance) -> {
             long now = now();
@@ -191,13 +303,52 @@ public class PluginRuntimeStateService {
         });
     }
 
+    public void markInvocationEnd(String pluginId,
+                                  String pluginName,
+                                  String invocationId,
+                                  String errorMessage) {
+        if (isBlank(invocationId)) {
+            markInvocationEnd(pluginId, pluginName, errorMessage);
+            return;
+        }
+        update(pluginId, pluginName, (state, instance) -> {
+            long now = now();
+            Set<String> invocationIds = instance.getActiveInvocationIds();
+            if (invocationIds != null && invocationIds.remove(invocationId)) {
+                instance.setActiveInvocationCount(Math.max(activeCount(instance) - 1, 0));
+            }
+            normalizeInvocationLifecycleStatus(instance);
+            instance.setLastActiveAt(now);
+            PluginRuntimeLeases.renew(instance, now);
+            if (errorMessage != null && !errorMessage.trim().isEmpty()) {
+                instance.setLastError(errorMessage);
+            }
+        });
+    }
+
+    public void markInvocationEndWithRetry(String pluginId,
+                                           String pluginName,
+                                           String invocationId,
+                                           String errorMessage) {
+        RuntimeException failure = null;
+        for (int attempt = 0; attempt < INVOCATION_END_ATTEMPTS; attempt++) {
+            try {
+                markInvocationEnd(pluginId, pluginName, invocationId, errorMessage);
+                return;
+            } catch (RuntimeException e) {
+                failure = e;
+            }
+        }
+        throw failure;
+    }
+
     public void markFailed(String pluginId, String pluginName, String errorMessage) {
         update(pluginId, pluginName, (state, instance) -> {
             long now = now();
             instance.setStatus(PluginStatus.FAILED.runtimeStatus());
             instance.setLastActiveAt(now);
             PluginRuntimeLeases.renew(instance, now);
-            instance.setActiveInvocationCount(0);
+            resetActiveInvocations(instance);
             instance.setLastError(errorMessage);
         });
     }
@@ -267,6 +418,20 @@ public class PluginRuntimeStateService {
         return instance.getActiveInvocationCount() == null ? 0 : instance.getActiveInvocationCount();
     }
 
+    private Set<String> activeInvocationIds(PluginRuntimeInstanceState instance) {
+        Set<String> invocationIds = instance.getActiveInvocationIds();
+        if (invocationIds == null) {
+            invocationIds = new LinkedHashSet<String>();
+            instance.setActiveInvocationIds(invocationIds);
+        }
+        return invocationIds;
+    }
+
+    private void resetActiveInvocations(PluginRuntimeInstanceState instance) {
+        instance.setActiveInvocationCount(0);
+        instance.setActiveInvocationIds(new LinkedHashSet<String>());
+    }
+
     private void normalizeInvocationLifecycleStatus(PluginRuntimeInstanceState instance) {
         if (isBlank(instance.getStatus()) || PluginStatus.EXECUTING.runtimeStatus().equals(instance.getStatus())) {
             instance.setStatus(PluginStatus.READY.runtimeStatus());
@@ -285,11 +450,13 @@ public class PluginRuntimeStateService {
         return System.currentTimeMillis();
     }
 
-    private void sleepQuietly() {
+    private boolean sleepQuietly() {
         try {
             Thread.sleep(startWaitIntervalMs);
+            return true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+            return false;
         }
     }
 

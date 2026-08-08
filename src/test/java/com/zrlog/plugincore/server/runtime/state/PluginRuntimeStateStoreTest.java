@@ -4,9 +4,13 @@ import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.runtime.InMemoryRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -15,8 +19,58 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class PluginRuntimeStateStoreTest {
+
+    @Test
+    public void shouldNormalizeNullRuntimeStateDocumentsItemsAndInstances() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        kvStore.put(PluginRuntimeStateStore.KEY, "null");
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+
+        assertEquals(0, store.list().size());
+
+        kvStore.put(PluginRuntimeStateStore.KEY,
+                "{\"items\":[null,{\"pluginId\":\"plugin-a\",\"instances\":[null,"
+                        + "{\"instanceId\":\"instance-a\"}]},null]}");
+        PluginRuntimeStateDocument loaded = store.loadDocument();
+        assertEquals(1, loaded.getItems().size());
+        assertEquals("plugin-a", loaded.getItems().get(0).getPluginId());
+        assertEquals(1, loaded.getItems().get(0).getInstances().size());
+        assertEquals("instance-a", loaded.getItems().get(0).getInstances().get(0).getInstanceId());
+
+        store.saveDocument(loaded);
+        PluginRuntimeStateDocument persisted = new Gson().fromJson(
+                kvStore.get(PluginRuntimeStateStore.KEY).get(), PluginRuntimeStateDocument.class);
+        assertEquals(1, persisted.getItems().size());
+        assertEquals(1, persisted.getItems().get(0).getInstances().size());
+
+        store.saveDocument(null);
+        persisted = new Gson().fromJson(
+                kvStore.get(PluginRuntimeStateStore.KEY).get(), PluginRuntimeStateDocument.class);
+        assertEquals(0, persisted.getItems().size());
+    }
+
+    @Test
+    public void shouldRejectOversizedStoredRuntimeStateDocumentBeforeParsingIt() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        kvStore.put(PluginRuntimeStateStore.KEY,
+                "x".repeat(PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES + 1));
+
+        assertRejected(() -> new PluginRuntimeStateStore(kvStore).loadDocument(), "exceeds");
+    }
+
+    @Test
+    public void shouldRejectOversizedRuntimeStateDocumentBeforeWritingIt() {
+        PluginRuntimeStateDocument document = new PluginRuntimeStateDocument();
+        document.getItems().add(state(
+                "x".repeat(PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES), "large plugin"));
+
+        assertRejected(() -> new PluginRuntimeStateStore(new InMemoryRuntimeKvStore()).saveDocument(document),
+                "exceeds");
+    }
 
     @Test
     public void shouldCompactDuplicatePluginIdOnUpsert() {
@@ -51,6 +105,46 @@ public class PluginRuntimeStateStoreTest {
         List<PluginRuntimeState> items = store.list();
         assertEquals(1, items.size());
         assertEquals("plugin-b", items.get(0).getPluginId());
+    }
+
+    @Test
+    public void shouldTruncateLegacyRuntimeStateErrorsOnLoadAndSave() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        String oversizedError = repeat("x", RuntimeTextLimits.MAX_ERROR_MESSAGE_CODE_POINTS + 100);
+        kvStore.put(PluginRuntimeStateStore.KEY,
+                "{\"items\":[{\"pluginId\":\"plugin-a\",\"lastError\":\"" + oversizedError
+                        + "\",\"instances\":[{\"instanceId\":\"instance-a\",\"lastError\":\""
+                        + oversizedError + "\"}]}]}");
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+
+        PluginRuntimeState loaded = store.find("plugin-a").get();
+        assertEquals(RuntimeTextLimits.MAX_ERROR_MESSAGE_CODE_POINTS, codePointLength(loaded.getLastError()));
+        assertEquals(RuntimeTextLimits.MAX_ERROR_MESSAGE_CODE_POINTS,
+                codePointLength(loaded.getInstances().get(0).getLastError()));
+
+        store.upsert(loaded);
+
+        PluginRuntimeStateDocument persisted = new Gson().fromJson(
+                kvStore.get(PluginRuntimeStateStore.KEY).get(), PluginRuntimeStateDocument.class);
+        assertEquals(RuntimeTextLimits.MAX_ERROR_MESSAGE_CODE_POINTS,
+                codePointLength(persisted.getItems().get(0).getLastError()));
+        assertEquals(RuntimeTextLimits.MAX_ERROR_MESSAGE_CODE_POINTS,
+                codePointLength(persisted.getItems().get(0).getInstances().get(0).getLastError()));
+    }
+
+    @Test
+    public void shouldNormalizeOversizedLegacyInvocationTokensOnLoadAndSave() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        PluginRuntimeStateDocument oversizedDocument = oversizedInvocationDocument();
+        kvStore.put(PluginRuntimeStateStore.KEY, new Gson().toJson(oversizedDocument));
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+
+        assertNormalizedInvocationTokens(store.loadDocument());
+
+        store.saveDocument(oversizedDocument);
+        PluginRuntimeStateDocument persisted = new Gson().fromJson(
+                kvStore.get(PluginRuntimeStateStore.KEY).get(), PluginRuntimeStateDocument.class);
+        assertNormalizedInvocationTokens(persisted);
     }
 
     @Test
@@ -216,10 +310,60 @@ public class PluginRuntimeStateStoreTest {
         return instance;
     }
 
+    private int codePointLength(String value) {
+        return value.codePointCount(0, value.length());
+    }
+
+    private String repeat(String value, int count) {
+        StringBuilder builder = new StringBuilder(value.length() * count);
+        for (int i = 0; i < count; i++) {
+            builder.append(value);
+        }
+        return builder.toString();
+    }
+
     private String documentJson(PluginRuntimeState... states) {
         PluginRuntimeStateDocument document = new PluginRuntimeStateDocument();
         document.setItems(Arrays.asList(states));
         return new Gson().toJson(document);
+    }
+
+    private void assertRejected(Runnable action, String messagePart) {
+        try {
+            action.run();
+            fail("document should be rejected");
+        } catch (IllegalArgumentException e) {
+            assertTrue(e.getMessage(), e.getMessage().contains(messagePart));
+        }
+    }
+
+    private PluginRuntimeStateDocument oversizedInvocationDocument() {
+        int validTokenCount = PluginRuntimeStateService.MAX_ACTIVE_INVOCATION_IDS + 5;
+        LinkedHashSet<String> invocationIds = new LinkedHashSet<String>();
+        for (int i = validTokenCount - 1; i >= 0; i--) {
+            invocationIds.add(String.format("invocation-%03d", i));
+        }
+        invocationIds.add(null);
+        invocationIds.add(" ");
+        invocationIds.add("\t");
+        PluginRuntimeInstanceState instance = instance(
+                "oversized-instance", "ready", 1000L, validTokenCount + 3);
+        instance.setActiveInvocationIds(invocationIds);
+        PluginRuntimeState state = state("plugin-a", "reminder");
+        state.setInstances(Arrays.asList(instance));
+        PluginRuntimeStateDocument document = new PluginRuntimeStateDocument();
+        document.setItems(Arrays.asList(state));
+        return document;
+    }
+
+    private void assertNormalizedInvocationTokens(PluginRuntimeStateDocument document) {
+        PluginRuntimeInstanceState instance = document.getItems().get(0).getInstances().get(0);
+        List<String> invocationIds = new ArrayList<String>(instance.getActiveInvocationIds());
+        assertEquals(PluginRuntimeStateService.MAX_ACTIVE_INVOCATION_IDS, invocationIds.size());
+        assertEquals("invocation-000", invocationIds.get(0));
+        assertEquals("invocation-255", invocationIds.get(invocationIds.size() - 1));
+        assertEquals(Integer.valueOf(PluginRuntimeStateService.MAX_ACTIVE_INVOCATION_IDS + 3),
+                instance.getActiveInvocationCount());
     }
 
     private static class StaleOnceKvStore implements KvRepository, ConditionalKvRepository {

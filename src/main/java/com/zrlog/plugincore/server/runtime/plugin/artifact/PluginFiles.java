@@ -10,9 +10,6 @@ import com.zrlog.plugincore.server.util.HttpUtils;
 import com.zrlog.plugincore.server.util.StringUtils;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -103,26 +100,6 @@ public final class PluginFiles {
         }
     }
 
-    static void copyInputStreamToFile(InputStream inputStream, String filePath) {
-        try (FileOutputStream outputStream = new FileOutputStream(filePath)) {
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = inputStream.read(buffer)) != -1) {
-                outputStream.write(buffer, 0, length);
-            }
-        } catch (IOException e) {
-            LOGGER.info("copy plugin error " + e.getMessage());
-        } finally {
-            if (Objects.nonNull(inputStream)) {
-                try {
-                    inputStream.close();
-                } catch (IOException e) {
-                    // ignore
-                }
-            }
-        }
-    }
-
     public static File getPluginFile(String pluginShortName) {
         String nativeInfo = PluginRuntimeBridge.hostConnection().getNativeInfo();
         String filename = StringUtils.isEmpty(nativeInfo) ? pluginShortName + ".jar" :
@@ -186,7 +163,7 @@ public final class PluginFiles {
         if (parentFile != null) {
             parentFile.mkdirs();
         }
-        copyInputStreamToFile(HttpUtils.doGetRequest(url, new HashMap<>()), downloadFile.toString());
+        HttpUtils.downloadToFile(url, new HashMap<>(), downloadFile);
         if (downloadFile.length() == 0) {
             throw new RuntimeException("Download error");
         }

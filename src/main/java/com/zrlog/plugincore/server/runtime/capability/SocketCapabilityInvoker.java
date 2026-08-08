@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server.runtime.capability;
 
 import com.google.gson.Gson;
 import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.ResponseLease;
 import com.zrlog.plugin.common.IdUtil;
 import com.zrlog.plugin.common.PluginExecutionTimeouts;
 import com.zrlog.plugin.data.codec.MsgPacket;
@@ -46,31 +47,31 @@ public class SocketCapabilityInvoker implements CapabilityInvoker {
                 request.setPayload(payload);
                 int id = IdUtil.getInt();
                 session.sendJsonMsg(request, ActionType.CAPABILITY_INVOKE.name(), id, MsgPacketStatus.SEND_REQUEST);
-                MsgPacket response = session.getResponseMsgPacketByMsgId(id, readTimeout(context));
-                if (Objects.isNull(response)) {
-                    return error("Capability invoke timeout or empty response");
-                }
-                if (!Objects.equals(ActionType.CAPABILITY_INVOKE.name(), response.getMethodStr())) {
-                    return error("Unexpected capability response: " + response.getMethodStr());
-                }
-                try {
-                    CapabilityInvokeResult result = gson.fromJson(response.getDataStr(), CapabilityInvokeResult.class);
-                    if (result == null) {
-                        return error("Capability invoke response is empty");
+                try (ResponseLease responseLease = session.getResponseLeaseByMsgId(id, readTimeout(context))) {
+                    if (responseLease == null) {
+                        return error("Capability invoke timeout or empty response");
                     }
-                    if (!result.isSuccess() && (result.getErrorMessage() == null || result.getErrorMessage().trim().isEmpty())) {
-                        result.setErrorMessage("Capability invoke failed");
+                    MsgPacket response = responseLease.getPacket();
+                    if (!Objects.equals(ActionType.CAPABILITY_INVOKE.name(), response.getMethodStr())) {
+                        return error("Unexpected capability response: " + response.getMethodStr());
                     }
-                    return result;
-                } catch (Exception e) {
-                    if (response.getStatus() == MsgPacketStatus.RESPONSE_SUCCESS) {
-                        CapabilityInvokeResult result = new CapabilityInvokeResult();
-                        result.setSuccess(true);
+                    try {
+                        CapabilityInvokeResult result = gson.fromJson(response.getDataStr(), CapabilityInvokeResult.class);
+                        if (result == null) {
+                            return error("Capability invoke response is empty");
+                        }
+                        if (!result.isSuccess() && (result.getErrorMessage() == null || result.getErrorMessage().trim().isEmpty())) {
+                            result.setErrorMessage("Capability invoke failed");
+                        }
                         return result;
+                    } catch (Exception e) {
+                        if (response.getStatus() == MsgPacketStatus.RESPONSE_SUCCESS) {
+                            CapabilityInvokeResult result = new CapabilityInvokeResult();
+                            result.setSuccess(true);
+                            return result;
+                        }
+                        return error(e.getMessage());
                     }
-                    return error(e.getMessage());
-                } finally {
-                    session.getPipeMap().remove(id);
                 }
             }
         }

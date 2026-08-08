@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime.notification;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
+
 public class NotificationDelivery {
 
     private String id;
@@ -55,7 +57,7 @@ public class NotificationDelivery {
     }
 
     public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
+        this.errorMessage = RuntimeTextLimits.truncateErrorMessage(errorMessage);
     }
 
     public Long getCreatedAt() {

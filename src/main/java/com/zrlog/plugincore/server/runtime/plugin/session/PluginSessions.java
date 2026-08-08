@@ -27,12 +27,24 @@ public final class PluginSessions {
         return registry().isRunningByPluginId(pluginId);
     }
 
+    public static boolean isReadyByPluginId(String pluginId) {
+        return registry().isReadyByPluginId(pluginId);
+    }
+
+    public static void markReady(IOSession session) {
+        registry().markReady(session);
+    }
+
     public static boolean isRunningByPluginShortName(String pluginShortName) {
         return registry().isRunningByPluginShortName(pluginShortName);
     }
 
     public static IOSession getLocalSessionByPluginShortName(String pluginShortName) {
         return registry().getLocalSessionByPluginShortName(pluginShortName);
+    }
+
+    public static IOSession getReadyLocalSessionByPluginShortName(String pluginShortName) {
+        return registry().getReadyLocalSessionByPluginShortName(pluginShortName);
     }
 
     public static IOSession getOrStartLocalSessionByPluginShortName(String pluginShortName) {
@@ -45,6 +57,18 @@ public final class PluginSessions {
 
     public static IOSession getLocalSessionByPluginId(String pluginId) {
         return registry().getLocalSessionByPluginId(pluginId);
+    }
+
+    public static IOSession getReadyLocalSessionByPluginId(String pluginId) {
+        return registry().getReadyLocalSessionByPluginId(pluginId);
+    }
+
+    public static IOSession claimReadyLocalSessionByPluginId(String pluginId) {
+        return registry().claimReadyLocalSessionByPluginId(pluginId);
+    }
+
+    public static IOSession claimReadyLocalSessionByPluginId(String pluginId, long operationWaitTimeoutMs) {
+        return registry().claimReadyLocalSessionByPluginId(pluginId, operationWaitTimeoutMs);
     }
 
     public static List<IOSession> getLocalSessionsByPluginId(String pluginId) {

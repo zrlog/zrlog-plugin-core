@@ -3,7 +3,9 @@ package com.zrlog.plugincore.server.dao;
 import com.google.gson.Gson;
 import com.hibegin.common.dao.DaoTrace;
 import com.zrlog.plugin.common.LoggerUtil;
+import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugincore.server.model.PluginCore;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 import com.zrlog.plugincore.server.vo.PluginVO;
 
 import java.util.*;
@@ -51,7 +53,11 @@ public class PluginCoreDAO {
 
     private PluginCore parsePluginCore(Optional<String> text) {
         if (text.isPresent() && !text.get().isEmpty()) {
-            return normalize(gson.fromJson(text.get(), PluginCore.class));
+            PersistentJsonLimits.requireUtf8Length("Plugin core document", text.get(),
+                    PersistentJsonLimits.MAX_PLUGIN_CORE_DOCUMENT_BYTES);
+            PluginCore pluginCore = normalize(gson.fromJson(text.get(), PluginCore.class));
+            validatePluginEntryCount(pluginCore);
+            return pluginCore;
         }
         return new PluginCore();
     }
@@ -68,9 +74,10 @@ public class PluginCoreDAO {
             WebSiteDAO.WebSiteValueSnapshot snapshot = getPluginCoreRawByDb();
             Optional<String> raw = snapshot.getValue();
             PluginCore nextPluginCore = parsePluginCore(raw);
+            String normalizedCurrentJson = pluginCoreJson(nextPluginCore);
             consumer.accept(nextPluginCore);
-            String json = gson.toJson(nextPluginCore);
-            if (Objects.equals(raw.orElse(null), json)) {
+            String json = pluginCoreJson(nextPluginCore);
+            if (Objects.equals(normalizedCurrentJson, json)) {
                 return nextPluginCore;
             }
             try {
@@ -82,6 +89,20 @@ public class PluginCoreDAO {
             }
         }
         throw new IllegalStateException("Failed to update plugin core due to concurrent modification");
+    }
+
+    public synchronized void validatePluginRegistration(Plugin plugin) {
+        if (plugin == null) {
+            throw new IllegalArgumentException("Plugin metadata is empty");
+        }
+        PluginCore projected = loadSnapshot();
+        PluginVO pluginVO = new PluginVO();
+        pluginVO.setPlugin(plugin);
+        pluginVO.setFileMd5("");
+        projected.getPluginInfoMap().put(plugin.getShortName(), pluginVO);
+        String json = pluginCoreJson(projected);
+        PersistentJsonLimits.requireUtf8Length("Projected plugin core document", json,
+                PersistentJsonLimits.MAX_PLUGIN_CORE_DOCUMENT_BYTES - 1024);
     }
 
     protected boolean compareAndSetPluginCore(String expectedValue, String expectedRemark, String value) throws SQLException {
@@ -192,7 +213,26 @@ public class PluginCoreDAO {
     }
 
     private PluginCore normalize(PluginCore pluginCore) {
-        return pluginCore == null ? new PluginCore() : pluginCore;
+        PluginCore normalized = pluginCore == null ? new PluginCore() : pluginCore;
+        normalized.getSetting().getRuntime().normalize();
+        return normalized;
+    }
+
+    private String pluginCoreJson(PluginCore pluginCore) {
+        PluginCore normalized = normalize(pluginCore);
+        validatePluginEntryCount(normalized);
+        String json = gson.toJson(normalized);
+        PersistentJsonLimits.requireUtf8Length("Plugin core document", json,
+                PersistentJsonLimits.MAX_PLUGIN_CORE_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private void validatePluginEntryCount(PluginCore pluginCore) {
+        if (pluginCore.getPluginInfoMap() != null
+                && pluginCore.getPluginInfoMap().size() > PersistentJsonLimits.MAX_PLUGIN_ENTRIES) {
+            throw new IllegalArgumentException("Plugin core entry count exceeds "
+                    + PersistentJsonLimits.MAX_PLUGIN_ENTRIES);
+        }
     }
 
     private boolean isBlank(String text) {

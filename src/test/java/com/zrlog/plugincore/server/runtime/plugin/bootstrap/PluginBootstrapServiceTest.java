@@ -9,7 +9,9 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -56,6 +58,25 @@ public class PluginBootstrapServiceTest {
     }
 
     @Test
+    public void shouldCoalesceRepeatedAsyncBootstrapRequests() throws Exception {
+        BlockingPluginBootstrapService bootstrapService = new BlockingPluginBootstrapService();
+        try {
+            bootstrapService.loadPluginsAsync();
+            assertTrue(bootstrapService.started.await(1, TimeUnit.SECONDS));
+
+            for (int i = 0; i < 1000; i++) {
+                bootstrapService.loadPluginsAsync();
+            }
+
+            assertEquals(1, bootstrapService.loadCount.get());
+        } finally {
+            bootstrapService.release.countDown();
+        }
+        assertTrue(bootstrapService.awaitCurrentBootstrap());
+        assertEquals(1, bootstrapService.loadCount.get());
+    }
+
+    @Test
     public void shouldReportCurrentBootstrapReadyWithoutBlocking() throws Exception {
         BlockingPluginBootstrapService bootstrapService = new BlockingPluginBootstrapService();
 
@@ -70,10 +91,26 @@ public class PluginBootstrapServiceTest {
         assertTrue(bootstrapService.isCurrentBootstrapReady());
     }
 
+    @Test
+    public void shouldInterruptCurrentBootstrapAndRejectNewWorkAfterShutdown() throws Exception {
+        BlockingPluginBootstrapService bootstrapService = new BlockingPluginBootstrapService();
+        bootstrapService.loadPluginsAsync();
+        assertTrue(bootstrapService.started.await(1, TimeUnit.SECONDS));
+
+        bootstrapService.shutdown();
+        bootstrapService.loadPluginsAsync();
+
+        assertTrue(bootstrapService.isShutdown());
+        assertFalse(bootstrapService.isBootstrapRunning());
+        assertFalse(bootstrapService.awaitCurrentBootstrap());
+        assertEquals(1, bootstrapService.loadCount.get());
+    }
+
     private static class BlockingPluginBootstrapService extends PluginBootstrapService {
 
         private final CountDownLatch started = new CountDownLatch(1);
         private final CountDownLatch release = new CountDownLatch(1);
+        private final AtomicInteger loadCount = new AtomicInteger();
 
         private BlockingPluginBootstrapService() {
             this(defaultComponents());
@@ -86,6 +123,7 @@ public class PluginBootstrapServiceTest {
 
         @Override
         public void loadPlugins() {
+            loadCount.incrementAndGet();
             started.countDown();
             try {
                 release.await(1, TimeUnit.SECONDS);

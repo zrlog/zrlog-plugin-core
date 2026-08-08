@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server.runtime.capability;
 
 import com.zrlog.plugin.message.CapabilityInvokeResult;
 import com.zrlog.plugin.message.PluginCapability;
+import com.zrlog.plugin.common.LoggerUtil;
 import com.zrlog.plugin.common.PluginExecutionTimeouts;
 import com.zrlog.plugincore.server.runtime.invocation.CapabilityInvocationLog;
 import com.zrlog.plugincore.server.runtime.invocation.InvocationLogStore;
@@ -10,8 +11,12 @@ import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class TrackingCapabilityInvoker implements CapabilityInvoker {
+
+    private static final Logger LOGGER = LoggerUtil.getLogger(TrackingCapabilityInvoker.class);
 
     private final CapabilityInvoker delegate;
     private final PluginRuntimeStateService stateService;
@@ -48,7 +53,7 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
         String validationError = validationError(pluginId, capabilityKey, context, capability);
         if (validationError != null) {
             result = error(validationError);
-            appendLog(pluginId, capabilityKey, context, result, startedAtMs, capability);
+            appendLogBestEffort(pluginId, capabilityKey, context, result, startedAtMs, capability);
             return result;
         }
         if (context.getTimeoutSeconds() == null) {
@@ -57,18 +62,71 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
         String pluginName = capability.map(PluginCapability::getPluginName).orElse(null);
         if (!stateService.ensureStarted(pluginId)) {
             result = error("Plugin start failed");
-            appendLog(pluginId, capabilityKey, context, result, startedAtMs, capability);
+            appendLogBestEffort(pluginId, capabilityKey, context, result, startedAtMs, capability);
             return result;
         }
-        stateService.markInvocationStart(pluginId, pluginName);
+        String invocationId = UUID.randomUUID().toString();
+        Error fatalError = null;
+        result = null;
         try {
-            result = delegate.invoke(pluginId, capabilityKey, payload, context);
+            stateService.markInvocationStart(pluginId, pluginName, invocationId);
+            try {
+                result = delegate.invoke(pluginId, capabilityKey, payload, context);
+                if (result == null) {
+                    result = error("Capability invoker returned no result");
+                }
+            } catch (RuntimeException e) {
+                result = error(e.getMessage());
+            } catch (Error e) {
+                result = error(errorMessage(e));
+                fatalError = e;
+            }
         } catch (RuntimeException e) {
             result = error(e.getMessage());
+            throw e;
+        } catch (Error e) {
+            result = error(errorMessage(e));
+            throw e;
+        } finally {
+            CapabilityInvokeResult completedResult = result == null
+                    ? error("Capability invocation tracking failed") : result;
+            finishTracking(pluginId, pluginName, invocationId, capabilityKey, context,
+                    completedResult, startedAtMs, capability);
         }
-        stateService.markInvocationEnd(pluginId, pluginName, result.isSuccess() ? null : result.getErrorMessage());
-        appendLog(pluginId, capabilityKey, context, result, startedAtMs, capability);
+        if (fatalError != null) {
+            throw fatalError;
+        }
         return result;
+    }
+
+    private void finishTracking(String pluginId,
+                                String pluginName,
+                                String invocationId,
+                                String capabilityKey,
+                                InvokeContext context,
+                                CapabilityInvokeResult result,
+                                long startedAtMs,
+                                Optional<PluginCapability> capability) {
+        String invocationError = result.isSuccess() ? null : result.getErrorMessage();
+        try {
+            stateService.markInvocationEndWithRetry(pluginId, pluginName, invocationId, invocationError);
+        } catch (RuntimeException | Error e) {
+            LOGGER.log(Level.WARNING, "Unable to finish capability invocation state tracking", e);
+        }
+        appendLogBestEffort(pluginId, capabilityKey, context, result, startedAtMs, capability);
+    }
+
+    private void appendLogBestEffort(String pluginId,
+                                     String capabilityKey,
+                                     InvokeContext context,
+                                     CapabilityInvokeResult result,
+                                     long startedAtMs,
+                                     Optional<PluginCapability> capability) {
+        try {
+            appendLog(pluginId, capabilityKey, context, result, startedAtMs, capability);
+        } catch (RuntimeException | Error e) {
+            LOGGER.log(Level.WARNING, "Unable to append capability invocation log", e);
+        }
     }
 
     private String validationError(String pluginId,
@@ -154,6 +212,14 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
         result.setSuccess(false);
         result.setErrorMessage(message == null || message.trim().isEmpty() ? "Capability invoke failed" : message);
         return result;
+    }
+
+    private String errorMessage(Throwable throwable) {
+        if (throwable == null) {
+            return "Capability invoke failed";
+        }
+        String message = throwable.getMessage();
+        return isBlank(message) ? throwable.getClass().getSimpleName() : message;
     }
 
     private boolean isBlank(String value) {

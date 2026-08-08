@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
+import com.zrlog.plugincore.server.util.PersistentJsonLimits;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,10 +47,10 @@ public class AutomationStore {
             document.setUpdatedAt(RuntimeDates.nowString());
             return document;
         }
-        AutomationDocument document = gson.fromJson(json.get(), AutomationDocument.class);
-        if (document.getItems() == null) {
-            document.setItems(new ArrayList<>());
-        }
+        PersistentJsonLimits.requireUtf8Length("Automation document", json.get(),
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        AutomationDocument document = normalizeDocument(gson.fromJson(json.get(), AutomationDocument.class));
+        validateDocumentItemCount(document);
         return document;
     }
 
@@ -71,10 +72,41 @@ public class AutomationStore {
     }
 
     private String documentJson(AutomationDocument document) {
+        document = normalizeDocument(document);
+        validateDocumentItemCount(document);
         document.setSchema(KEY);
         document.setVersion(2);
         document.setUpdatedAt(RuntimeDates.nowString());
-        return gson.toJson(document);
+        String json = gson.toJson(document);
+        PersistentJsonLimits.requireUtf8Length("Automation document", json,
+                PersistentJsonLimits.MAX_RUNTIME_DOCUMENT_BYTES);
+        return json;
+    }
+
+    private void validateDocumentItemCount(AutomationDocument document) {
+        if (document.getItems().size() > PersistentJsonLimits.MAX_PLUGIN_ENTRIES) {
+            throw new IllegalArgumentException("Automation document item count exceeds "
+                    + PersistentJsonLimits.MAX_PLUGIN_ENTRIES);
+        }
+    }
+
+    private AutomationDocument normalizeDocument(AutomationDocument document) {
+        if (document == null) {
+            document = new AutomationDocument();
+        }
+        List<PluginAutomation> currentItems = document.getItems();
+        if (currentItems == null || currentItems.isEmpty()) {
+            document.setItems(new ArrayList<>());
+            return document;
+        }
+        List<PluginAutomation> items = new ArrayList<>(currentItems.size());
+        for (PluginAutomation automation : currentItems) {
+            if (automation != null) {
+                items.add(automation);
+            }
+        }
+        document.setItems(items);
+        return document;
     }
 
     public static class AutomationDocumentSnapshot {

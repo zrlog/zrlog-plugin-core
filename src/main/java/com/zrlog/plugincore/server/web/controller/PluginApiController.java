@@ -109,9 +109,11 @@ public class PluginApiController extends Controller {
     @ResponseBody
     public PluginApiModels.ActionResponse stop() {
         if (getSession() != null) {
-            String pluginShortName = getSession().getPlugin().getShortName();
-            pluginBootstrap().stopPlugin(pluginShortName);
-            return PluginApiModels.ActionResponse.success("停止成功");
+            Plugin plugin = getSession().getPlugin();
+            if (pluginBootstrap().stopPlugin(plugin.getId(), plugin.getShortName())) {
+                return PluginApiModels.ActionResponse.success("停止成功");
+            }
+            return PluginApiModels.ActionResponse.error("插件停止失败");
         }
         return PluginApiModels.ActionResponse.error("插件没有启动");
 
@@ -143,8 +145,10 @@ public class PluginApiController extends Controller {
         if (session != null) {
             session.sendMsg(new MsgPacket(genInfo(), ContentType.JSON, MsgPacketStatus.SEND_REQUEST, IdUtil.getInt(), ActionType.PLUGIN_UNINSTALL.name()));
         }
-        pluginBootstrap().deletePlugin(pluginShortName);
-        return PluginApiModels.ActionResponse.success("移除成功");
+        if (pluginBootstrap().deletePlugin(pluginShortName)) {
+            return PluginApiModels.ActionResponse.success("移除成功");
+        }
+        return PluginApiModels.ActionResponse.error("插件仍在运行，移除失败");
     }
 
     @ResponseBody

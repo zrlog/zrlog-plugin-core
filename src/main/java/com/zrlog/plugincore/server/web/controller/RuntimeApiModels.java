@@ -297,6 +297,9 @@ public final class RuntimeApiModels {
         private Boolean idleStopEnabled;
         private Long idleTimeoutSeconds;
         private Long idleScanIntervalSeconds;
+        private Long maxRunningPlugins;
+        private Long maxConcurrentStarts;
+        private Long startFailureBackoffSeconds;
 
         public RuntimeSettingsResponse() {
             super(0, "成功");
@@ -309,6 +312,9 @@ public final class RuntimeApiModels {
             this.idleStopEnabled = setting.getIdleStopEnabled();
             this.idleTimeoutSeconds = setting.getIdleTimeoutSeconds();
             this.idleScanIntervalSeconds = setting.getIdleScanIntervalSeconds();
+            this.maxRunningPlugins = setting.getMaxRunningPlugins();
+            this.maxConcurrentStarts = setting.getMaxConcurrentStarts();
+            this.startFailureBackoffSeconds = setting.getStartFailureBackoffSeconds();
         }
 
         public Boolean getOnDemandEnabled() {
@@ -349,6 +355,30 @@ public final class RuntimeApiModels {
 
         public void setIdleScanIntervalSeconds(Long idleScanIntervalSeconds) {
             this.idleScanIntervalSeconds = idleScanIntervalSeconds;
+        }
+
+        public Long getMaxRunningPlugins() {
+            return maxRunningPlugins;
+        }
+
+        public void setMaxRunningPlugins(Long maxRunningPlugins) {
+            this.maxRunningPlugins = maxRunningPlugins;
+        }
+
+        public Long getMaxConcurrentStarts() {
+            return maxConcurrentStarts;
+        }
+
+        public void setMaxConcurrentStarts(Long maxConcurrentStarts) {
+            this.maxConcurrentStarts = maxConcurrentStarts;
+        }
+
+        public Long getStartFailureBackoffSeconds() {
+            return startFailureBackoffSeconds;
+        }
+
+        public void setStartFailureBackoffSeconds(Long startFailureBackoffSeconds) {
+            this.startFailureBackoffSeconds = startFailureBackoffSeconds;
         }
     }
 

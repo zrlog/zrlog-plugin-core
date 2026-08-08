@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server.runtime.plugin.session;
 
 import com.hibegin.common.util.LoggerUtil;
 import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.ResponseLease;
 import com.zrlog.plugin.common.IdUtil;
 import com.zrlog.plugin.common.PluginVersionUtils;
 import com.zrlog.plugin.common.type.PluginVersion;
@@ -39,6 +40,7 @@ final class PluginSessionHeartbeat {
     private final Consumer<IOSession> staleSessionHandler;
     private final ScheduledExecutorService executor;
     private final AtomicBoolean started = new AtomicBoolean(false);
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
     private final boolean enabled;
 
     static PluginSessionHeartbeat active(Supplier<List<IOSession>> sessionSupplier,
@@ -66,17 +68,38 @@ final class PluginSessionHeartbeat {
     }
 
     void start() {
-        if (!enabled || !started.compareAndSet(false, true)) {
+        if (!enabled || shutdown.get() || !started.compareAndSet(false, true)) {
             return;
         }
-        executor.scheduleWithFixedDelay(this::pingSessions,
-                HEARTBEAT_INTERVAL_MS,
-                HEARTBEAT_INTERVAL_MS,
-                TimeUnit.MILLISECONDS);
+        synchronized (shutdown) {
+            if (shutdown.get()) {
+                return;
+            }
+            executor.scheduleWithFixedDelay(this::pingSessions,
+                    HEARTBEAT_INTERVAL_MS,
+                    HEARTBEAT_INTERVAL_MS,
+                    TimeUnit.MILLISECONDS);
+        }
     }
 
     void register(IOSession session) {
+        if (shutdown.get()) {
+            return;
+        }
         markHeartbeat(session, System.currentTimeMillis());
+    }
+
+    void shutdown() {
+        if (!enabled) {
+            shutdown.set(true);
+            return;
+        }
+        synchronized (shutdown) {
+            if (!shutdown.compareAndSet(false, true)) {
+                return;
+            }
+            executor.shutdownNow();
+        }
     }
 
     boolean hasRecentHeartbeat(IOSession session, long nowMs) {
@@ -87,6 +110,9 @@ final class PluginSessionHeartbeat {
 
     boolean ensureRecentHeartbeat(IOSession session, long nowMs) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
+            if (shutdown.get()) {
+                return false;
+            }
             if (!hasRecentHeartbeat(session, nowMs)) {
                 return false;
             }
@@ -107,6 +133,9 @@ final class PluginSessionHeartbeat {
     }
 
     private void pingSessions() {
+        if (shutdown.get()) {
+            return;
+        }
         try {
             for (IOSession session : sessionSupplier.get()) {
                 pingSession(session, System.currentTimeMillis());
@@ -167,12 +196,15 @@ final class PluginSessionHeartbeat {
             return true;
         }
         int msgId = sendPing(session, nowMs, false);
-        MsgPacket response = session.getResponseMsgPacketByMsgId(msgId, Duration.ofMillis(HEARTBEAT_TIMEOUT_MS));
-        if (isPingResponse(response)) {
-            markHeartbeat(session, System.currentTimeMillis());
-            return true;
+        try (ResponseLease responseLease = session.getResponseLeaseByMsgId(msgId,
+                Duration.ofMillis(HEARTBEAT_TIMEOUT_MS))) {
+            MsgPacket response = responseLease == null ? null : responseLease.getPacket();
+            if (isPingResponse(response)) {
+                markHeartbeat(session, System.currentTimeMillis());
+                return true;
+            }
+            return false;
         }
-        return false;
     }
 
     private int sendPing(IOSession session, long nowMs, boolean async) {
