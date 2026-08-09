@@ -8,7 +8,10 @@ import com.zrlog.plugin.data.codec.SocketEncode;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.lang.reflect.Proxy;
 import java.nio.channels.Selector;
@@ -24,7 +27,19 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class PluginSessionRegistryTest {
+
+    private final DatabaseType databaseType;
+
+    public PluginSessionRegistryTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldReturnHeartbeatConfirmedSessionAsRunning() throws Exception {
@@ -78,7 +93,7 @@ public class PluginSessionRegistryTest {
 
     @Test
     public void shouldStartRequiredPluginOnFirstSessionRequestWithoutRegisteredMetadata() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             AtomicReference<Plugin> startedPlugin = new AtomicReference<>();
             PluginSessionRegistry registry = new PluginSessionRegistry(session -> {
             }, PluginSessionHeartbeat.disabled(), Collections.singletonMap("comment", "comment"), plugin -> {
@@ -97,7 +112,7 @@ public class PluginSessionRegistryTest {
 
     @Test
     public void shouldJoinInitializingSessionBeforeReturningItToRouting() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestSession testSession = testSession("plugin-a", "comment");
             AtomicBoolean starterCalled = new AtomicBoolean();
             PluginSessionRegistry registry = new PluginSessionRegistry(session -> {
@@ -120,7 +135,7 @@ public class PluginSessionRegistryTest {
 
     @Test
     public void shouldNotReturnInitializingSessionWhenStarterReportsSuccessWithoutReadyMarker() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestSession testSession = testSession("plugin-a", "comment");
             PluginSessionRegistry registry = new PluginSessionRegistry(session -> {
             }, PluginSessionHeartbeat.disabled(), Collections.singletonMap("comment", "plugin-a"), plugin -> true);
@@ -137,7 +152,7 @@ public class PluginSessionRegistryTest {
 
     @Test
     public void shouldReturnReadySessionWithoutStartingAgain() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestSession testSession = testSession("plugin-a", "comment");
             AtomicBoolean starterCalled = new AtomicBoolean();
             PluginSessionRegistry registry = new PluginSessionRegistry(session -> {

@@ -10,8 +10,11 @@ import com.zrlog.plugincore.server.runtime.plugin.process.PluginProcessRuntime;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import com.zrlog.plugincore.server.vo.PluginVO;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 import sun.misc.Unsafe;
 
 import java.io.ByteArrayInputStream;
@@ -33,12 +36,24 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class PluginMetadataBootstrapperTest {
+
+    private final DatabaseType databaseType;
 
     private final PluginMetadataBootstrapper metadataBootstrapper =
             new PluginMetadataBootstrapper(null, pluginShortName -> {
                 return true;
             });
+
+    public PluginMetadataBootstrapperTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldSkipMissingPluginFile() {
@@ -81,7 +96,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldStopProcessStartedForMetadataWhenRegistrationFails() throws Exception {
         File pluginFile = pluginFile("metadata-failure");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             RecordingProcessRuntime processRuntime = new RecordingProcessRuntime(sessionRegistry, false, true, true);
@@ -110,7 +125,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldAlwaysStopFailedMetadataProcessEvenWhenDemandWasClaimed() throws Exception {
         File pluginFile = pluginFile("metadata-failure-demanded");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             RecordingProcessRuntime processRuntime = new RecordingProcessRuntime(sessionRegistry, false, true, true);
@@ -136,7 +151,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldStopSuccessfulOnDemandMetadataProcessWhenUnclaimed() throws Exception {
         File pluginFile = pluginFile("metadata-success");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             RecordingProcessRuntime processRuntime = new RecordingProcessRuntime(sessionRegistry, true, true);
@@ -163,7 +178,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldKeepSuccessfulOnDemandMetadataProcessWhenDemandIsClaimed() throws Exception {
         File pluginFile = pluginFile("metadata-demanded");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             RecordingProcessRuntime processRuntime = new RecordingProcessRuntime(sessionRegistry, true, true);
@@ -186,7 +201,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldFinalizeMetadataSingleFlightBeforeStoppingUnclaimedProcess() throws Exception {
         File pluginFile = pluginFile("metadata-finalize-before-stop");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             PluginStartCoordinator startCoordinator = new PluginStartCoordinator();
@@ -209,7 +224,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldNotStopAlreadyRunningPluginWhenArtifactIsUnchanged() throws Exception {
         File pluginFile = pluginFile("metadata-running");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
             storePlugin(pluginFile, "plugin-id", true, PluginFiles.pluginFileMd5(pluginFile));
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
@@ -235,7 +250,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldAbortChangedArtifactWhenPreviousProcessCannotStop() throws Exception {
         File pluginFile = pluginFile("metadata-stop-failure");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
             storePlugin(pluginFile, "plugin-id", true, "previous-md5");
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
@@ -256,7 +271,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldNotReuseOldReadySessionWhenChangedArtifactFailsToSpawn() throws Exception {
         File pluginFile = pluginFile("metadata-spawn-failure");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
             storePlugin(pluginFile, "plugin-id", true, "previous-md5");
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
@@ -277,7 +292,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldCollapseConcurrentMetadataStartsForSamePlugin() throws Exception {
         File pluginFile = pluginFile("metadata-concurrent");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             storePlugin(pluginFile, "plugin-id", true, null);
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             BlockingProcessRuntime processRuntime = new BlockingProcessRuntime(sessionRegistry);
@@ -316,7 +331,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldCollapseUnknownMetadataStartsByStableArtifactIdentity() throws Exception {
         File pluginFile = pluginFile("metadata-unknown-concurrent");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             BlockingProcessRuntime processRuntime = new BlockingProcessRuntime(sessionRegistry);
             PluginMetadataBootstrapper bootstrapper = new PluginMetadataBootstrapper(
@@ -351,7 +366,7 @@ public class PluginMetadataBootstrapperTest {
     @Test
     public void shouldBackOffUnknownMetadataRetriesUsingStableArtifactIdentity() throws Exception {
         File pluginFile = pluginFile("metadata-unknown-backoff");
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             StubSessionRegistry sessionRegistry = new StubSessionRegistry();
             RecordingProcessRuntime processRuntime = new RecordingProcessRuntime(sessionRegistry, false, true, true);
             PluginMetadataBootstrapper bootstrapper = new PluginMetadataBootstrapper(

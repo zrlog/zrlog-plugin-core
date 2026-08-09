@@ -68,7 +68,8 @@ public class WebSiteDAO extends DAO {
                 return false;
             }
             try {
-                return new WebSiteDAO().set("name", key).set("value", value).set("remark", nextRemark).save();
+                return new WebSiteDAO().set("name", key).set("value", storedValue(value))
+                        .set("remark", nextRemark).save();
             } catch (SQLException e) {
                 if (!isDuplicateKey(e)) {
                     throw e;
@@ -78,10 +79,10 @@ public class WebSiteDAO extends DAO {
         }
         if (!isBlank(expectedRemark)) {
             return new WebSiteDAO().execute("update website set value=?, remark=? where name=? and remark=?",
-                    value, nextRemark, key, expectedRemark);
+                    storedValue(value), nextRemark, key, expectedRemark);
         }
         return new WebSiteDAO().execute("update website set value=?, remark=? where name=? and value=? and (remark is null or remark='')",
-                value, nextRemark, key, expectedValue);
+                storedValue(value), nextRemark, key, expectedValue);
     }
 
     public Map<String, Boolean> saveOrUpdate(Map<String, Object> values) throws SQLException {
@@ -155,7 +156,8 @@ public class WebSiteDAO extends DAO {
     private boolean saveOrUpdateOne(String key, Object value, String remark) throws SQLException {
         Map<String, Object> cond = new HashMap<>();
         cond.put("name", key);
-        DAO updateDAO = new WebSiteDAO().set("value", value);
+        Object persistedValue = storedValue(value);
+        DAO updateDAO = new WebSiteDAO().set("value", persistedValue);
         if (remark != null) {
             updateDAO.set("remark", remark);
         }
@@ -163,7 +165,7 @@ public class WebSiteDAO extends DAO {
             return true;
         }
         try {
-            DAO insertDAO = new WebSiteDAO().set("name", key).set("value", value);
+            DAO insertDAO = new WebSiteDAO().set("name", key).set("value", persistedValue);
             if (remark != null) {
                 insertDAO.set("remark", remark);
             }
@@ -172,7 +174,7 @@ public class WebSiteDAO extends DAO {
             if (!isDuplicateKey(e)) {
                 throw e;
             }
-            DAO retryDAO = new WebSiteDAO().set("value", value);
+            DAO retryDAO = new WebSiteDAO().set("value", persistedValue);
             if (remark != null) {
                 retryDAO.set("remark", remark);
             }
@@ -181,6 +183,10 @@ public class WebSiteDAO extends DAO {
             }
             return exists(key);
         }
+    }
+
+    private static Object storedValue(Object value) {
+        return value instanceof Boolean ? value.toString() : value;
     }
 
     private boolean exists(String key) throws SQLException {

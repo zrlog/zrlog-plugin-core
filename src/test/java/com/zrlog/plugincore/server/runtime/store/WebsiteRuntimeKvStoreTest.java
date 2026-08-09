@@ -1,7 +1,10 @@
 package com.zrlog.plugincore.server.runtime.store;
 
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.util.Optional;
 
@@ -9,11 +12,23 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class WebsiteRuntimeKvStoreTest {
 
+    private final DatabaseType databaseType;
+
+    public WebsiteRuntimeKvStoreTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
+
     @Test
-    public void shouldReadWriteAndCompareAndSetWithH2Database() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+    public void shouldReadWriteAndCompareAndSetWithSupportedDatabase() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             WebsiteRuntimeKvStore store = new WebsiteRuntimeKvStore();
 
             assertEquals(Optional.empty(), store.get("runtime.event"));

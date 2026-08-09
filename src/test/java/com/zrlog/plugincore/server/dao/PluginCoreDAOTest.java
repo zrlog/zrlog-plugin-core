@@ -4,7 +4,10 @@ import com.google.gson.Gson;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.sql.SQLException;
 import java.util.Optional;
@@ -12,9 +15,21 @@ import java.util.Optional;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class PluginCoreDAOTest {
 
+    private final DatabaseType databaseType;
+
     private final Gson gson = new Gson();
+
+    public PluginCoreDAOTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldSkipCasWhenUpdateDoesNotChangeJson() {
@@ -61,8 +76,8 @@ public class PluginCoreDAOTest {
     }
 
     @Test
-    public void shouldPersistPluginCoreJsonWithH2Database() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+    public void shouldPersistPluginCoreJsonWithSupportedDatabase() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             PluginCoreDAO dao = new PluginCoreDAO();
 
             PluginCore updated = dao.update(pluginCore ->

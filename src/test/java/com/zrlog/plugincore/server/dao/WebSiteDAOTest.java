@@ -1,7 +1,10 @@
 package com.zrlog.plugincore.server.dao;
 
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -12,7 +15,19 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class WebSiteDAOTest {
+
+    private final DatabaseType databaseType;
+
+    public WebSiteDAOTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldTreatStoredTextAndTypedValueAsSame() {
@@ -44,8 +59,8 @@ public class WebSiteDAOTest {
     }
 
     @Test
-    public void shouldReadAndWriteWebsiteRowsWithH2Database() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+    public void shouldReadAndWriteWebsiteRowsWithSupportedDatabase() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             WebSiteDAO dao = new WebSiteDAO();
 
             assertTrue(dao.saveOrUpdateChanged("title", "ZrLog"));
@@ -58,8 +73,8 @@ public class WebSiteDAOTest {
     }
 
     @Test
-    public void shouldCompareAndSetWebsiteValueWithH2Database() throws Exception {
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+    public void shouldCompareAndSetWebsiteValueWithSupportedDatabase() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             WebSiteDAO dao = new WebSiteDAO();
             assertTrue(dao.saveOrUpdateVersioned("runtime.setting", "v1"));
 

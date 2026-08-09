@@ -6,7 +6,10 @@ import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -32,7 +35,19 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class PluginProcessRuntimeTest {
+
+    private final DatabaseType databaseType;
+
+    public PluginProcessRuntimeTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldUsePluginHomeAsWorkingDirectoryForNativePlugin() {
@@ -144,7 +159,7 @@ public class PluginProcessRuntimeTest {
         Path pluginRoot = Files.createTempDirectory("plugin-process-registration");
         File pluginFile = pluginFile(pluginRoot, "registration-failure.jar");
         ControlledProcess process = new ControlledProcess(true);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, true);
 
             try {
@@ -168,7 +183,7 @@ public class PluginProcessRuntimeTest {
         Path pluginRoot = Files.createTempDirectory("plugin-process-shutdown");
         File pluginFile = pluginFile(pluginRoot, "shutdown.jar");
         ControlledProcess process = new ControlledProcess(true);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false);
 
             runtime.shutdownProcesses();
@@ -191,7 +206,7 @@ public class PluginProcessRuntimeTest {
         AtomicReference<Process> result = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Thread starter = null;
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false) {
                 @Override
                 Process startPluginProcess(LaunchCommand launchCommand) {
@@ -336,7 +351,7 @@ public class PluginProcessRuntimeTest {
         Path pluginRoot = Files.createTempDirectory("plugin-process-publication");
         File pluginFile = pluginFile(pluginRoot, "publication-failure.jar");
         ControlledProcess process = new ControlledProcess(false, true);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false, true);
 
             try {
@@ -359,7 +374,7 @@ public class PluginProcessRuntimeTest {
         Path pluginRoot = Files.createTempDirectory("plugin-process-rollback");
         File pluginFile = pluginFile(pluginRoot, "initialization-failure.jar");
         ControlledProcess process = new ControlledProcess(false);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false);
 
             try {
@@ -384,7 +399,7 @@ public class PluginProcessRuntimeTest {
         File pluginFile = pluginFile(pluginRoot, "early-exit.jar");
         ManagedControlledProcess process = new ManagedControlledProcess(false);
         PluginStartCoordinator coordinator = new PluginStartCoordinator();
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false, false, coordinator);
 
             org.junit.Assert.assertSame(process, runtime.loadPlugin(pluginFile, "plugin-id"));
@@ -411,7 +426,7 @@ public class PluginProcessRuntimeTest {
         File pluginFile = pluginFile(pluginRoot, "stable-exit.jar");
         ManagedControlledProcess process = new ManagedControlledProcess(false);
         PluginStartCoordinator coordinator = new PluginStartCoordinator();
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false, false, coordinator);
 
             org.junit.Assert.assertSame(process, runtime.loadPlugin(pluginFile, "plugin-id"));
@@ -436,7 +451,7 @@ public class PluginProcessRuntimeTest {
         File pluginFile = pluginFile(pluginRoot, "intentional-stop.jar");
         ManagedControlledProcess process = new ManagedControlledProcess(true);
         PluginStartCoordinator coordinator = new PluginStartCoordinator();
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false, false, coordinator);
 
             org.junit.Assert.assertSame(process, runtime.loadPlugin(pluginFile, "plugin-id"));
@@ -462,7 +477,7 @@ public class PluginProcessRuntimeTest {
         PluginStartCoordinator coordinator = new PluginStartCoordinator();
         CountDownLatch operationLocked = new CountDownLatch(1);
         CountDownLatch releaseOperation = new CountDownLatch(1);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(
                     pluginRoot, process, false, false, coordinator);
             org.junit.Assert.assertSame(process, runtime.loadPlugin(pluginFile, "plugin-id"));
@@ -501,7 +516,7 @@ public class PluginProcessRuntimeTest {
         File pluginFile = pluginFile(pluginRoot, "duplicate.jar");
         ManagedControlledProcess replacement = new ManagedControlledProcess(true);
         ControlledProcess oldProcess = new ControlledProcess(false);
-        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
             TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, replacement, false);
             PluginProcessRuntime.ProcessSlot oldSlot = new PluginProcessRuntime.ProcessSlot("duplicate");
             oldSlot.finishSpawn(oldProcess);

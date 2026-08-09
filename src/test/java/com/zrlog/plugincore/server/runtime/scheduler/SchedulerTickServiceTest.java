@@ -1,8 +1,10 @@
 package com.zrlog.plugincore.server.runtime.scheduler;
 
+import com.zrlog.plugin.RunConstants;
 import com.zrlog.plugin.common.BasicCronParser;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
 import com.zrlog.plugin.message.PluginCapability;
+import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.runtime.InMemoryRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityInvoker;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityStore;
@@ -20,6 +22,24 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 public class SchedulerTickServiceTest {
+
+    @Test
+    public void shouldSkipTickInNativeAgentMode() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AutomationRunStore runStore = new AutomationRunStore(kvStore);
+        SchedulerTickService service = new SchedulerTickService(new SchedulerSetting(), runtime(kvStore, runStore));
+        RunType previous = RunConstants.runType;
+        try {
+            RunConstants.runType = RunType.AGENT;
+
+            SchedulerTickResult result = service.tick(now());
+
+            assertEquals(0, result.getExecutedCount());
+            assertEquals(0, runStore.list().size());
+        } finally {
+            RunConstants.runType = previous;
+        }
+    }
 
     @Test
     public void shouldIgnoreLegacySchedulerDisabledFlag() {

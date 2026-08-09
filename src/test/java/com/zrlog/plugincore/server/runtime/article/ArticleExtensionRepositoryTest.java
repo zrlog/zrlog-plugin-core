@@ -6,7 +6,10 @@ import com.zrlog.plugin.message.ArticleExtensionQueryResult;
 import com.zrlog.plugin.message.ArticleExtensionResult;
 import com.zrlog.plugin.message.ArticleExtensionSetRequest;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -18,11 +21,23 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+@RunWith(Parameterized.class)
 public class ArticleExtensionRepositoryTest {
+
+    private final DatabaseType databaseType;
+
+    public ArticleExtensionRepositoryTest(DatabaseType databaseType) {
+        this.databaseType = databaseType;
+    }
+
+    @Parameterized.Parameters(name = "{0}")
+    public static DatabaseType[] databases() {
+        return DatabaseType.values();
+    }
 
     @Test
     public void shouldIsolateNamespacesAndQueryDeclaredIndexesWhenEnabled() throws Exception {
-        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open(databaseType)) {
             db.update("insert into log(logId,title,alias) values(?,?,?)", 1, "Article", "article");
             db.update("insert into website(name,value) values(?,?)",
                     ArticleExtensionRepository.FILTER_FEATURE_KEY, "true");
@@ -57,7 +72,7 @@ public class ArticleExtensionRepositoryTest {
 
     @Test
     public void shouldKeepWritesAvailableWhileExperimentalFilteringIsDisabled() throws Exception {
-        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open(databaseType)) {
             db.update("insert into log(logId,title,alias) values(?,?,?)", 1, "Article", "article");
             ArticleExtensionRepository repository = new ArticleExtensionRepository();
 
@@ -77,7 +92,7 @@ public class ArticleExtensionRepositoryTest {
 
     @Test
     public void shouldRollbackJsonWhenIndexRefreshFails() throws Exception {
-        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open(databaseType)) {
             db.update("insert into log(logId,title,alias) values(?,?,?)", 1, "Article", "article");
             ArticleExtensionRepository repository = new ArticleExtensionRepository();
             assertTrue(repository.set("metadata",
@@ -97,7 +112,7 @@ public class ArticleExtensionRepositoryTest {
 
     @Test
     public void shouldRejectIndexValuesThatCannotBeQueriedWithoutChangingJson() throws Exception {
-        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open()) {
+        try (InMemoryPluginCoreDatabase db = InMemoryPluginCoreDatabase.open(databaseType)) {
             db.update("insert into log(logId,title,alias) values(?,?,?)", 1, "Article", "article");
             ArticleExtensionRepository repository = new ArticleExtensionRepository();
             assertTrue(repository.set("metadata",

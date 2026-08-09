@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 basePath=${1}
 packageMavenArgs=("${@:2}")
+nativeMavenArgs=("${packageMavenArgs[@]}" "-Dsqlite-scope=provided")
+nativeProfiles="native"
+if [[ "${ZRLOG_PACKAGE_TYPE:-native}" != "faas" ]]; then
+  nativeProfiles="${nativeProfiles},native-sqlite"
+fi
 agentMavenArgs=()
-for arg in "${packageMavenArgs[@]}"; do
+for arg in "${nativeMavenArgs[@]}"; do
   if [[ "${arg}" == "-Dmysql-scope=provided" ]]; then
     continue
   fi
@@ -12,10 +17,10 @@ mkdir -p "${basePath}"
 echo "real target folder ${basePath}"
 
 java -version
-sh bin/build-info.sh
-./mvnw "${packageMavenArgs[@]}" -U -PnodeBuild clean package
-./mvnw "${agentMavenArgs[@]}" -Pnative -Dagent exec:exec@java-agent -U
-./mvnw "${packageMavenArgs[@]}" -Pnative -DskipNativeTests package
+bash -e bin/build-info.sh
+./mvnw "${nativeMavenArgs[@]}" -U -PnodeBuild clean package
+./mvnw "${agentMavenArgs[@]}" -P"${nativeProfiles}" -Dagent exec:exec@java-agent -U
+./mvnw "${nativeMavenArgs[@]}" -P"${nativeProfiles}" -DskipNativeTests package
 binName="plugin-core"
 targetFile=""
 sourceFile=""

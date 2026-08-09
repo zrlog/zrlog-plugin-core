@@ -38,7 +38,7 @@ jobs:
       - name: Build binary
         id: package
         run: |
-          bash -e bin/package-native-github.sh /tmp/download/plugin/core/faas -Dmysql-scope='provided'
+          ZRLOG_PACKAGE_TYPE=faas bash -e bin/package-native-github.sh /tmp/download/plugin/core/faas -Dmysql-scope='provided'
       - name: Process Linux binary
         uses: 94fzb/zrlog/.github/actions/process-artifact@11868b0b0f606f19367e69f839cddff3abf1747e
         with:
