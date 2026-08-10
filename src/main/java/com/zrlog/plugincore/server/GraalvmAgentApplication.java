@@ -51,6 +51,7 @@ import com.zrlog.plugincore.server.web.controller.PluginApiModels;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 public class GraalvmAgentApplication {
@@ -142,7 +143,8 @@ public class GraalvmAgentApplication {
                 PluginTransportModels.OperationResult.class,
                 DbPropertiesResponse.class,
                 PluginPwaManifest.class,
-                PluginPwaManifest.Icon.class
+                PluginPwaManifest.Icon.class,
+                LinkedHashMap.class
         );
     }
 }

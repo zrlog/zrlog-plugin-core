@@ -25,6 +25,7 @@ import com.zrlog.plugincore.server.runtime.state.PluginRuntimeState;
 import com.zrlog.plugincore.server.web.controller.RuntimeApiModels;
 import org.junit.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.junit.Assert.assertTrue;
@@ -84,6 +85,7 @@ public class GraalvmAgentApplicationTest {
         assertTrue(classes.contains(PluginTransportModels.InitErrorResponse.class));
         assertTrue(classes.contains(PluginTransportModels.OperationResult.class));
         assertTrue(classes.contains(DbPropertiesResponse.class));
+        assertTrue(classes.contains(LinkedHashMap.class));
     }
 
     @Test
