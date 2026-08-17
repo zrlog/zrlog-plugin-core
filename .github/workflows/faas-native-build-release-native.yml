@@ -40,7 +40,7 @@ jobs:
         run: |
           ZRLOG_PACKAGE_TYPE=faas bash -e bin/package-native-github.sh /tmp/download/plugin/core/faas -Dmysql-scope='provided'
       - name: Process Linux binary
-        uses: 94fzb/zrlog/.github/actions/process-artifact@11868b0b0f606f19367e69f839cddff3abf1747e
+        uses: 94fzb/zrlog/.github/actions/process-artifact@c45c60359dee99a8a493e6464bd519de9891518b
         with:
           artifact-file: ${{ steps.package.outputs.artifact_file }}
           artifact-name: ${{ steps.package.outputs.artifact_name }}
