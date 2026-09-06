@@ -69,7 +69,8 @@ public class PluginFilesTest {
         File file = PluginFiles.downloadPluginFile("changyan-Linux-amd64.bin", false, 9080,
                 "/var/task/conf/plugins/installed-plugins");
 
-        assertEquals("/var/task/conf/plugins/installed-plugins/changyan-Linux-amd64.bin", file.getPath());
+        assertEquals(new File("/var/task/conf/plugins/installed-plugins", "changyan-Linux-amd64.bin").getPath(),
+                file.getPath());
     }
 
     @Test
@@ -77,7 +78,8 @@ public class PluginFilesTest {
         File file = PluginFiles.downloadPluginFile("changyan-Linux-amd64.bin", true, 9080,
                 "/var/task/conf/plugins/installed-plugins");
 
-        assertEquals("/tmp/9080/plugins/installed-plugins/changyan-Linux-amd64.bin", file.getPath());
+        assertEquals(new File("/tmp/9080/plugins/installed-plugins", "changyan-Linux-amd64.bin").getPath(),
+                file.getPath());
     }
 
     private static void writeFile(File directory, String name) throws Exception {
