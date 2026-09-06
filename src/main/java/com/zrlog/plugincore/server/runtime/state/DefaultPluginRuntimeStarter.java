@@ -10,6 +10,7 @@ import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessions;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
 
 import java.io.File;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -59,6 +60,12 @@ public class DefaultPluginRuntimeStarter implements PluginRuntimeStarter {
                                 pluginVO.getPlugin().getShortName(),
                                 PluginSessions.nameOrShortName(pluginVO.getPlugin())));
                     }
+                }
+            }
+            for (Map.Entry<String, String> requiredPlugin : pluginBootstrapService.getRequiredPlugins().entrySet()) {
+                if (Objects.equals(requiredPlugin.getValue(), pluginId)) {
+                    return Optional.of(new PluginIdentity(
+                            requiredPlugin.getValue(), requiredPlugin.getKey(), requiredPlugin.getKey()));
                 }
             }
             return Optional.empty();
