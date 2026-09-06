@@ -59,7 +59,7 @@ public class PluginProcessRuntimeTest {
                 pluginFile, 9080, "plugin-id", userDir, tmpDir, "", "/opt/java"
         );
 
-        assertEquals(pluginFile.toString(), command.program);
+        assertEquals(pluginFile.getAbsolutePath(), command.program);
         assertEquals(Arrays.asList("9080", "plugin-id"), command.args);
         assertEquals(new File(userDir), command.workingDirectory);
         assertEquals(userDir, command.environment.get("HOME"));
@@ -85,7 +85,7 @@ public class PluginProcessRuntimeTest {
                 "-Dfile.encoding=UTF-8",
                 "-Xmx32m",
                 "-jar",
-                pluginFile.toString(),
+                pluginFile.getAbsolutePath(),
                 "9080",
                 "plugin-id"
         ), command.args);

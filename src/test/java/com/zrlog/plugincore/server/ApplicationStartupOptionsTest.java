@@ -3,6 +3,8 @@ package com.zrlog.plugincore.server;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginHostConnection;
 import org.junit.Test;
 
+import java.io.File;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -41,7 +43,7 @@ public class ApplicationStartupOptionsTest {
 
         assertEquals(9089, options.getHttpPort());
         assertEquals(19080, options.getMasterPort());
-        assertEquals("/tmp/blog-db.properties", options.getDbProperties().getPath());
+        assertEquals(new File("/tmp/blog-db.properties").getPath(), options.getDbProperties().getPath());
         assertEquals("/tmp/plugins", options.getPluginPath());
         assertEquals("/tmp/blog-runtime", options.getBlogRunTime().getPath());
         assertEquals("4.0.0", options.getBlogRunTime().getVersion());
