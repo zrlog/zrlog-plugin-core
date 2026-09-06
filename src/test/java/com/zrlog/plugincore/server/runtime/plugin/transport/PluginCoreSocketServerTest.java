@@ -8,6 +8,7 @@ import com.zrlog.plugin.data.codec.MsgPacketStatus;
 import com.zrlog.plugin.data.codec.PackageVersion;
 import com.zrlog.plugin.data.codec.SocketPacketMemoryBudget;
 import com.zrlog.plugin.data.codec.SocketPacketLimits;
+import com.zrlog.plugin.data.codec.SocketDecode;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.type.ActionType;
 import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginBootstrapService;
@@ -44,6 +45,13 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class PluginCoreSocketServerTest {
+
+    @Test
+    public void shouldClassifyTypedSocketSessionCloseAsNormalShutdown() {
+        assertTrue(PluginCoreSocketServer.isSocketSessionClosed(
+                new SocketDecode.SocketSessionClosedException()));
+        assertFalse(PluginCoreSocketServer.isSocketSessionClosed(new IOException("connect closed")));
+    }
 
     @Test
     public void shouldReleaseSessionAfterDecodeFailure() throws Exception {

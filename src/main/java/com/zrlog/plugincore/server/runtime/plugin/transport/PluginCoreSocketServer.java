@@ -308,7 +308,11 @@ public class PluginCoreSocketServer implements ISocketServer {
             decode.doDecode(session);
         } catch (Exception e) {
             closeSession(session, key);
-            LOGGER.log(Level.SEVERE, "dispose error " + e.getMessage());
+            if (isSocketSessionClosed(e)) {
+                LOGGER.info("plugin session closed");
+            } else {
+                LOGGER.log(Level.SEVERE, "dispose error " + e.getMessage());
+            }
         } finally {
             if (EnvKit.isDevMode()) {
                 try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
@@ -316,6 +320,10 @@ public class PluginCoreSocketServer implements ISocketServer {
                 }
             }
         }
+    }
+
+    static boolean isSocketSessionClosed(Exception e) {
+        return e instanceof SocketDecode.SocketSessionClosedException;
     }
 
     static ThreadPoolExecutor newMessageExecutor() {
