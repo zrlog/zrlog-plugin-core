@@ -201,6 +201,7 @@
                                     -H:-ReduceImplicitExceptionStackTraceInformation
                                     -march=compatibility
                                     --enable-preview
+                                    --enable-native-access=ALL-UNNAMED
                                     -H:DashboardDump=${imageName}
                                     -H:+DashboardAll
                                     -H:IncludeResources=
