@@ -1,3 +1,4 @@
+import {getRes} from "../../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Grid, Space, Table, Tag, Tooltip, Typography, message} from "antd";
 import {CheckOutlined, ReloadOutlined} from "@ant-design/icons";
@@ -37,7 +38,7 @@ const ServiceRuntimeTab: React.FC = () => {
             setProviders(providersRes.data.items || []);
             setCommentProviders(commentProvidersRes.data.items || []);
         } catch (e) {
-            messageApi.error("服务配置加载失败");
+            messageApi.error(getRes().runtimeServices.loadError);
         } finally {
             setLoading(false);
         }
@@ -57,7 +58,7 @@ const ServiceRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已保存");
+        messageApi.success(getRes().common.saved);
         await loadData();
     };
 
@@ -69,7 +70,7 @@ const ServiceRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已恢复自动选择");
+        messageApi.success(getRes().common.autoRestored);
         await loadData();
     };
 
@@ -81,7 +82,7 @@ const ServiceRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已保存");
+        messageApi.success(getRes().common.saved);
         await loadData();
     };
 
@@ -91,22 +92,22 @@ const ServiceRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已恢复默认评论插件");
+        messageApi.success(getRes().runtimeServices.defaultRestored);
         await loadData();
     };
 
     const statusTags = (selected: boolean, reviewRequired: boolean, confirmed: boolean) => (
         <Space size={[4, 4]} wrap>
-            {selected && <Tag color="success">当前</Tag>}
-            {reviewRequired && <Tag color="warning">需确认</Tag>}
-            {confirmed && <Tag color="blue">已确认</Tag>}
+            {selected && <Tag color="success">{getRes().runtimeServices.current}</Tag>}
+            {reviewRequired && <Tag color="warning">{getRes().common.reviewRequired}</Tag>}
+            {confirmed && <Tag color="blue">{getRes().common.confirmed}</Tag>}
         </Space>
     );
     const serviceNameCell = (record: ServiceProviderRow) => (
         <Space direction="vertical" size={0}>
             <Text strong>{textOrEmpty(record.serviceLabel) || record.serviceName}</Text>
             <Tooltip title={record.serviceName}>
-                <Text type="secondary" style={{fontSize: 12}}>系统服务</Text>
+                <Text type="secondary" style={{fontSize: 12}}>{getRes().runtimeServices.systemServices}</Text>
             </Tooltip>
         </Space>
     );
@@ -126,38 +127,38 @@ const ServiceRuntimeTab: React.FC = () => {
 
     const serviceColumns: ColumnsType<ServiceProviderRow> = [
         {
-            title: "服务",
+            title: getRes().common.service,
             key: "service",
             width: 180,
             responsive: ["md"],
             render: (_, record) => serviceNameCell(record)
         },
         {
-            title: "来源插件",
+            title: getRes().runtimeServices.sourcePlugin,
             key: "provider",
             render: (_, record) => serviceProviderCell(record)
         },
         {
-            title: "状态",
+            title: getRes().common.status,
             key: "status",
             width: 180,
             responsive: ["md"],
             render: (_, record) => statusTags(record.selected, record.reviewRequired, record.confirmed)
         },
         {
-            title: "操作",
+            title: getRes().common.actions,
             key: "action",
             width: isMobile ? 96 : 190,
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
-                    <Tooltip title="设为默认">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label="设为默认" disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
-                            {!isMobile && "设为默认"}
+                    <Tooltip title={getRes().common.setDefault}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
+                            {!isMobile && getRes().common.setDefault}
                         </Button>
                     </Tooltip>
-                    <Tooltip title="自动选择">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label="自动选择" onClick={() => restoreAutoProvider(record.serviceName)}>
-                            {!isMobile && "自动选择"}
+                    <Tooltip title={getRes().common.autoSelect}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.serviceName)}>
+                            {!isMobile && getRes().common.autoSelect}
                         </Button>
                     </Tooltip>
                 </Space>
@@ -167,8 +168,8 @@ const ServiceRuntimeTab: React.FC = () => {
     const commentProviderCell = (record: CommentProviderRow) => (
         <Space direction="vertical" size={8} style={{width: "100%", minWidth: 0}}>
             {renderPluginIdentity({
-                title: textOrEmpty(record.pluginName) || "未命名插件",
-                subtitle: textOrEmpty(record.description) || "评论插件",
+                title: textOrEmpty(record.pluginName) || getRes().common.unnamedPlugin,
+                subtitle: textOrEmpty(record.description) || getRes().runtimeServices.commentPlugin,
                 pluginPreviewImageBase64: record.pluginPreviewImageBase64
             })}
             {isMobile && statusTags(record.selected, record.reviewRequired, record.confirmed)}
@@ -177,38 +178,38 @@ const ServiceRuntimeTab: React.FC = () => {
 
     const commentColumns: ColumnsType<CommentProviderRow> = [
         {
-            title: "类型",
+            title: getRes().runtimeServices.type,
             key: "type",
             width: 180,
             responsive: ["md"],
-            render: () => <Text strong>评论插件</Text>
+            render: () => <Text strong>{getRes().runtimeServices.commentPlugin}</Text>
         },
         {
-            title: "来源插件",
+            title: getRes().runtimeServices.sourcePlugin,
             key: "provider",
             render: (_, record) => commentProviderCell(record)
         },
         {
-            title: "状态",
+            title: getRes().common.status,
             key: "status",
             width: 180,
             responsive: ["md"],
             render: (_, record) => statusTags(record.selected, record.reviewRequired, record.confirmed)
         },
         {
-            title: "操作",
+            title: getRes().common.actions,
             key: "action",
             width: isMobile ? 96 : 190,
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
-                    <Tooltip title="设为当前">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label="设为当前" disabled={record.confirmed} onClick={() => setCommentProvider(record)}>
-                            {!isMobile && "设为当前"}
+                    <Tooltip title={getRes().runtimeServices.setCurrent}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().runtimeServices.setCurrent} disabled={record.confirmed} onClick={() => setCommentProvider(record)}>
+                            {!isMobile && getRes().runtimeServices.setCurrent}
                         </Button>
                     </Tooltip>
-                    <Tooltip title="恢复默认">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label="恢复默认" onClick={restoreDefaultCommentProvider}>
-                            {!isMobile && "恢复默认"}
+                    <Tooltip title={getRes().runtimeServices.restoreDefault}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().runtimeServices.restoreDefault} onClick={restoreDefaultCommentProvider}>
+                            {!isMobile && getRes().runtimeServices.restoreDefault}
                         </Button>
                     </Tooltip>
                 </Space>
@@ -219,9 +220,9 @@ const ServiceRuntimeTab: React.FC = () => {
     return (
         <Space direction="vertical" size={16} style={{width: "100%"}}>
             {contextHolder}
-            <Text strong>系统服务</Text>
+            <Text strong>{getRes().runtimeServices.systemServices}</Text>
             <Table<ServiceProviderRow> loading={loading} rowKey={record => `${record.serviceName}:${record.providerPluginId}:${record.capabilityKey}`} columns={serviceColumns} dataSource={providers} pagination={false} scroll={isMobile ? undefined : {x: 760}} />
-            <Text strong>评论插件</Text>
+            <Text strong>{getRes().runtimeServices.commentPlugin}</Text>
             <Table<CommentProviderRow> loading={loading} rowKey={record => record.shortName} columns={commentColumns} dataSource={commentProviders} pagination={false} scroll={isMobile ? undefined : {x: 760}} />
         </Space>
     );

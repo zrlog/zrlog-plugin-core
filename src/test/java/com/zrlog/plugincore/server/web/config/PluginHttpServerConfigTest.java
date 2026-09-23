@@ -8,6 +8,7 @@ import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeServices;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerExternalEndpoint;
+import com.zrlog.plugincore.server.util.PluginI18n;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -140,6 +141,41 @@ public class PluginHttpServerConfigTest {
             executor.execute(() -> executionThread.set(Thread.currentThread()));
 
             assertSame(Thread.currentThread(), executionThread.get());
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    public void shouldIsolateLanguageOnReusedRequestWorker() throws Exception {
+        ThreadPoolExecutor executor = PluginHttpServerConfig.newRequestExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaximumPoolSize(1);
+        try {
+            assertEquals("en_US", executor.submit(() -> {
+                PluginI18n.setLanguage("en_US");
+                return PluginI18n.getLanguage();
+            }).get(5, TimeUnit.SECONDS));
+            assertEquals("zh_CN", executor.submit(PluginI18n::getLanguage).get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    public void shouldRestoreCallerLanguageAfterRejectedRequestFails() throws Exception {
+        ThreadPoolExecutor executor = PluginHttpServerConfig.newRequestExecutor();
+        CountDownLatch release = new CountDownLatch(1);
+        try (PluginI18n.Scope ignored = PluginI18n.open("en_US")) {
+            saturate(executor, PluginHttpServerConfig.REQUEST_THREADS,
+                    PluginHttpServerConfig.REQUEST_QUEUE_CAPACITY, release);
+            org.junit.Assert.assertThrows(IllegalStateException.class, () -> executor.execute(() -> {
+                assertEquals("zh_CN", PluginI18n.getLanguage());
+                throw new IllegalStateException("request failed");
+            }));
+            assertEquals("en_US", PluginI18n.getLanguage());
         } finally {
             release.countDown();
             executor.shutdownNow();

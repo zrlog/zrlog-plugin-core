@@ -338,6 +338,7 @@ final class NativeRuntimeWarmup {
 
     private static void warmupPluginApiModels(Gson gson) {
         PluginApiModels.PluginListResponse pluginListResponse = new PluginApiModels.PluginListResponse();
+        pluginListResponse.setLang("zh_CN");
         pluginListResponse.setPlugins(Collections.<Plugin>emptyList());
         pluginListResponse.setSetting(new PluginCoreSetting());
         pluginListResponse.setPluginMetadataReady(true);

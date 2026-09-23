@@ -2,6 +2,8 @@
 import {createRoot} from "react-dom/client";
 import * as serviceWorker from './serviceWorker';
 import zh_CN from "antd/es/locale/zh_CN";
+import en_US from "antd/es/locale/en_US";
+import {getRes, normalizeLang, setLanguage} from "./i18n/plugin";
 import {legacyLogicalPropertiesTransformer, StyleProvider} from "@ant-design/cssinjs";
 import {useCallback, useEffect, useState} from "react";
 import {App, ConfigProvider, Layout, theme} from "antd";
@@ -14,6 +16,7 @@ const {darkAlgorithm, defaultAlgorithm} = theme;
 const {Content} = Layout;
 
 export interface PluginCoreInfoResponse {
+    lang?: string
     pluginBuildId: string
     pluginBuildNumber: string
     pluginVersion: string
@@ -66,6 +69,9 @@ export interface PluginCapability {
 }
 
 const covertData = (data: PluginCoreInfoResponse) => {
+    setLanguage(data.lang);
+    document.title = getRes().plugins.title;
+    document.documentElement.lang = normalizeLang(data.lang).replace("_", "-");
     let locationHref = window.location.href;
     if (locationHref.endsWith("/")) {
         locationHref = locationHref.substring(0, locationHref.length - 1);
@@ -116,7 +122,7 @@ const Index = () => {
 
     return (
         <ConfigProvider
-            locale={zh_CN}
+            locale={normalizeLang(pluginInfo.lang) === "en_US" ? en_US : zh_CN}
             theme={{
                 algorithm: pluginInfo.dark ? darkAlgorithm : defaultAlgorithm,
                 token: {

@@ -54,6 +54,7 @@ public final class PluginApiModels {
 
     public static class PluginListResponse {
 
+        private String lang;
         private List<Plugin> plugins;
         private PluginCoreSetting setting;
         private Boolean pluginMetadataReady;
@@ -65,6 +66,14 @@ public final class PluginApiModels {
         private String pluginBuildNumber;
         private Set<String> requiredPlugins;
         private String pluginCenter;
+
+        public String getLang() {
+            return lang;
+        }
+
+        public void setLang(String lang) {
+            this.lang = lang;
+        }
 
         public List<Plugin> getPlugins() {
             return plugins;

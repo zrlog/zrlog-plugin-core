@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.zrlog.plugin.message.NotificationChannelProvider;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -201,13 +203,13 @@ final class RuntimeProviderResponses {
 
     private static String serviceLabel(String serviceName) {
         if (Objects.equals("uploadService", serviceName)) {
-            return "上传服务";
+            return PluginI18n.text("plugin.service.upload");
         }
         if (Objects.equals("uploadToPrivateService", serviceName)) {
-            return "私有上传服务";
+            return PluginI18n.text("plugin.service.privateUpload");
         }
         if (Objects.equals("emailService", serviceName)) {
-            return "邮件服务";
+            return PluginI18n.text("plugin.service.email");
         }
         return serviceName;
     }

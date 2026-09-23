@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.http.annotation.ResponseBody;
 import com.hibegin.http.server.api.HttpRequest;
 import com.hibegin.http.server.api.HttpResponse;
@@ -68,6 +70,7 @@ public class PluginApiController extends Controller {
                 || pluginBootstrap().isCurrentBootstrapReady();
         PluginCore pluginCore = PluginCoreRunMode.isNativeAgent() ? null : PluginCoreDAO.getInstance().loadSnapshot();
         PluginApiModels.PluginListResponse response = new PluginApiModels.PluginListResponse();
+        response.setLang(PluginI18n.getLanguage());
         response.setPlugins(pluginsForCurrentMode(pluginCore));
         response.setSetting(pluginCore == null ? new PluginCoreSetting() : pluginCore.getSetting());
         response.setPluginMetadataReady(pluginMetadataReady);
@@ -111,11 +114,11 @@ public class PluginApiController extends Controller {
         if (getSession() != null) {
             Plugin plugin = getSession().getPlugin();
             if (pluginBootstrap().stopPlugin(plugin.getId(), plugin.getShortName())) {
-                return PluginApiModels.ActionResponse.success("停止成功");
+                return PluginApiModels.ActionResponse.success(PluginI18n.text("plugin.stop.success"));
             }
-            return PluginApiModels.ActionResponse.error("插件停止失败");
+            return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.stop.error"));
         }
-        return PluginApiModels.ActionResponse.error("插件没有启动");
+        return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.stop.notRunning"));
 
     }
 
@@ -125,30 +128,30 @@ public class PluginApiController extends Controller {
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginCore, pluginShortName);
         if (pluginVO == null || pluginVO.getPlugin() == null) {
-            return PluginApiModels.ActionResponse.error("插件不存在");
+            return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.validation.notFound"));
         }
         String pluginId = pluginVO.getPlugin().getId();
         if (PluginSessions.isRunningByPluginId(pluginId)) {
-            return PluginApiModels.ActionResponse.error("插件已经启动了");
+            return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.start.alreadyRunning"));
         }
         boolean started = runtimeStateService(pluginCore).ensureStarted(pluginId);
-        return new PluginApiModels.ActionResponse(started ? 0 : 1, started ? "插件启动成功" : "插件启动失败");
+        return new PluginApiModels.ActionResponse(started ? 0 : 1, started ? PluginI18n.text("plugin.start.success") : PluginI18n.text("plugin.start.error"));
     }
 
     @ResponseBody
     public PluginApiModels.ActionResponse uninstall() {
         String pluginShortName = getRequest().getParaToStr("name");
         if (pluginBootstrap().getRequiredPlugins().containsKey(pluginShortName)) {
-            return PluginApiModels.ActionResponse.error("必要插件，无法移除");
+            return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.uninstall.required"));
         }
         IOSession session = getSession();
         if (session != null) {
             session.sendMsg(new MsgPacket(genInfo(), ContentType.JSON, MsgPacketStatus.SEND_REQUEST, IdUtil.getInt(), ActionType.PLUGIN_UNINSTALL.name()));
         }
         if (pluginBootstrap().deletePlugin(pluginShortName)) {
-            return PluginApiModels.ActionResponse.success("移除成功");
+            return PluginApiModels.ActionResponse.success(PluginI18n.text("plugin.uninstall.success"));
         }
-        return PluginApiModels.ActionResponse.error("插件仍在运行，移除失败");
+        return PluginApiModels.ActionResponse.error(PluginI18n.text("plugin.uninstall.running"));
     }
 
     @ResponseBody
@@ -164,7 +167,7 @@ public class PluginApiController extends Controller {
 
         PluginApiModels.RefreshCacheResponse response = new PluginApiModels.RefreshCacheResponse();
         response.setCode(failedCount == 0 ? 0 : 1);
-        response.setMessage(failedCount == 0 ? "更新缓存成功" : "部分插件更新缓存失败");
+        response.setMessage(failedCount == 0 ? PluginI18n.text("plugin.cache.success") : PluginI18n.text("plugin.cache.partialError"));
         response.setRuntimeEventSuccessCount(eventResult.getSuccessCount());
         response.setRuntimeEventFailedCount(failedCount);
         response.setRuntimeEventHandlerCount(eventResult.getHandlerCount());

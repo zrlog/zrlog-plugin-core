@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.common.dao.dto.PageData;
 import com.hibegin.http.HttpMethod;
 import com.hibegin.http.annotation.ResponseBody;
@@ -39,11 +41,11 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOById(pluginCore, pluginId);
         if (pluginVO == null || pluginVO.getPlugin() == null) {
-            return error("插件不存在");
+            return error(PluginI18n.text("plugin.validation.notFound"));
         }
         boolean started = runtimeStateService(pluginCore).ensureStarted(pluginVO.getPlugin().getId());
         if (!started) {
-            return error("插件启动失败");
+            return error(PluginI18n.text("plugin.start.error"));
         }
         return ActionResponse.started();
     }
@@ -54,16 +56,16 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         PluginVO pluginVO = PluginCoreDAO.getInstance().getPluginVOById(pluginCore, pluginId);
         if (pluginVO == null || pluginVO.getPlugin() == null) {
-            return error("插件不存在");
+            return error(PluginI18n.text("plugin.validation.notFound"));
         }
         if (activeInvocationCount(pluginId) > 0) {
-            return error("插件正在执行任务");
+            return error(PluginI18n.text("plugin.runtime.busy"));
         }
         String pluginName = pluginDisplayName(pluginVO.getPlugin());
         try {
             runtimeStateService(pluginCore).markStopping(pluginId, pluginName);
             if (!pluginBootstrap().stopPlugin(pluginId, pluginVO.getPlugin().getShortName())) {
-                throw new IllegalStateException("插件停止失败");
+                throw new IllegalStateException(PluginI18n.text("plugin.stop.error"));
             }
             runtimeStateService(pluginCore).markStopped(pluginId, pluginName);
             return success();
@@ -159,7 +161,7 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
             try {
                 number = Long.parseLong(value.trim());
             } catch (NumberFormatException e) {
-                throw new IllegalArgumentException(name + " 必须是数字");
+                throw new IllegalArgumentException(PluginI18n.text("plugin.validation.numberRequired", name));
             }
         }
         return number == null ? min : Math.max(min, Math.min(max, number));

@@ -1,0 +1,12 @@
+{
+  "resources": {
+    "includes": [
+      {
+        "pattern": "\\Qi18n/plugin_backend_zh_CN.properties\\E"
+      },
+      {
+        "pattern": "\\Qi18n/plugin_backend_en_US.properties\\E"
+      }
+    ]
+  }
+}

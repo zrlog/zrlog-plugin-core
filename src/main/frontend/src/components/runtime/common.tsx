@@ -1,3 +1,4 @@
+import {getRes, formatText, getLanguage} from "../../i18n/plugin";
 import {useMemo} from "react";
 import type {ReactNode} from "react";
 import {Avatar, Space, Typography, theme} from "antd";
@@ -269,7 +270,7 @@ export const runtimeTabFromPath = (pathname: string): RuntimeTab => {
 };
 
 export const formatTime = (value?: string) => value && value.length > 0 ? value : "-";
-export const formatEpoch = (value?: number) => value ? new Date(value).toLocaleString() : "-";
+export const formatEpoch = (value?: number) => value ? new Date(value).toLocaleString(getLanguage().replace("_", "-")) : "-";
 export const textOrEmpty = (value?: string) => value && value.trim().length > 0 ? value.trim() : "";
 export const formatDurationSeconds = (value?: number) => {
     const seconds = Number(value);
@@ -279,14 +280,14 @@ export const formatDurationSeconds = (value?: number) => {
     if (seconds >= 3600) {
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
-        return minutes > 0 ? `${hours} 小时 ${minutes} 分钟` : `${hours} 小时`;
+        return minutes > 0 ? formatText(getRes().common.hoursMinutes, {hours, minutes}) : formatText(getRes().common.hours, {hours});
     }
     if (seconds >= 60) {
         const minutes = Math.floor(seconds / 60);
         const remainSeconds = seconds % 60;
-        return remainSeconds > 0 ? `${minutes} 分 ${remainSeconds} 秒` : `${minutes} 分钟`;
+        return remainSeconds > 0 ? formatText(getRes().common.minutesSeconds, {minutes, seconds: remainSeconds}) : formatText(getRes().common.minutes, {minutes});
     }
-    return `${seconds} 秒`;
+    return formatText(getRes().common.seconds, {seconds});
 };
 
 type PluginIdentityOptions = {
@@ -381,7 +382,7 @@ export const useCapabilityView = (capabilities: Capability[]) => {
     }, [capabilities]);
 
     const pluginNameLabel = (pluginId?: string, pluginName?: string) =>
-        pluginId ? (pluginNameById.get(pluginId) || textOrEmpty(pluginName) || "未命名插件") : (textOrEmpty(pluginName) || "未命名插件");
+        pluginId ? (pluginNameById.get(pluginId) || textOrEmpty(pluginName) || getRes().common.unnamedPlugin) : (textOrEmpty(pluginName) || getRes().common.unnamedPlugin);
 
     const pluginPreviewImage = (pluginId?: string, explicitPreviewImage?: string) =>
         textOrEmpty(explicitPreviewImage) || (pluginId ? pluginPreviewImageById.get(pluginId) || "" : "");
@@ -412,7 +413,7 @@ export const useCapabilityView = (capabilities: Capability[]) => {
         if (!capability?.timeoutSeconds) {
             return "";
         }
-        return `执行超时 ${formatDurationSeconds(capability.timeoutSeconds)}`;
+        return formatText(getRes().common.executionTimeout, {duration: formatDurationSeconds(capability.timeoutSeconds)});
     };
 
     const capabilityDescriptionNode = (pluginId?: string, key?: string): ReactNode => {

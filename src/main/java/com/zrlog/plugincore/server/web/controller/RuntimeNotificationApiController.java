@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.common.dao.dto.PageData;
 import com.hibegin.http.annotation.ResponseBody;
 import com.zrlog.plugin.common.KvRepository;
@@ -54,7 +56,7 @@ public class RuntimeNotificationApiController extends RuntimeBaseApiController {
         String capabilityKey = getRequest().getParaToStr("capabilityKey");
         PluginCapability provider = capabilityStore().find(pluginId, capabilityKey).orElse(null);
         if (!validNotificationProvider(provider, channel)) {
-            return error("通知通道能力不存在");
+            return error(PluginI18n.text("plugin.notification.notFound"));
         }
         NotificationProviderSetting providerSetting = new NotificationProviderSetting();
         providerSetting.setChannel(channel);
@@ -82,7 +84,7 @@ public class RuntimeNotificationApiController extends RuntimeBaseApiController {
         CapabilityStore capabilityStore = new CapabilityStore(kvStore);
         PluginCapability provider = capabilityStore.find(pluginId, capabilityKey).orElse(null);
         if (!validNotificationProvider(provider, channel)) {
-            return error("通知通道能力不存在");
+            return error(PluginI18n.text("plugin.notification.notFound"));
         }
         PluginCore pluginCore = PluginCoreDAO.getInstance().loadSnapshot();
         NotificationProviderSetting providerSetting = new NotificationProviderSetting();
@@ -103,7 +105,7 @@ public class RuntimeNotificationApiController extends RuntimeBaseApiController {
                 ? null
                 : result.getDeliveries().get(0);
         if (delivery == null) {
-            return error("测试通知没有生成投递记录");
+            return error(PluginI18n.text("plugin.notification.noDelivery"));
         }
         return new NotificationTestResponse(result.getSuccessCount() > 0,
                 notificationDeliveryResponse(delivery, pluginsById(pluginCore)));
@@ -118,13 +120,13 @@ public class RuntimeNotificationApiController extends RuntimeBaseApiController {
     private NotificationRequest notificationTestRequest(String channel) {
         NotificationRequest request = new NotificationRequest();
         request.setSourcePluginId("__system__");
-        request.setSourcePluginName("系统");
+        request.setSourcePluginName(PluginI18n.text("plugin.common.system"));
         request.setSourceCapabilityKey("runtime.notification.test");
         request.setEventType("runtime.notification.test");
         request.setNotificationType("test");
         request.setChannels(Collections.singletonList(channel));
-        request.setTitle("ZrLog 通知测试");
-        request.setContent("这是一条来自 ZrLog Plugin Runtime 的测试通知。");
+        request.setTitle(PluginI18n.text("plugin.notification.testTitle"));
+        request.setContent(PluginI18n.text("plugin.notification.testContent"));
         request.setLevel("info");
         request.setRequestId(UUID.randomUUID().toString());
         request.setTraceId(UUID.randomUUID().toString());

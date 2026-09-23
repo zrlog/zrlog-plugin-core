@@ -1,3 +1,4 @@
+import {getRes} from "../i18n/plugin";
 import React from "react";
 import { Result, Button } from "antd";
 
@@ -13,7 +14,7 @@ const UnknownErrorPage: React.FC<UnknownErrorPageProps> = ({ message }) => {
             status="500"
             title="500"
             subTitle={getSecondTitle()}
-            extra={<Button type="primary">Unknown Error</Button>}
+            extra={<Button type="primary">{getRes().error.unknown}</Button>}
         />
     );
 };

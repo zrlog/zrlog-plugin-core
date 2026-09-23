@@ -1,3 +1,4 @@
+import {getRes, formatText} from "../../i18n/plugin";
 import React, {useEffect, useMemo, useState} from "react";
 import {Button, Drawer, Form, Grid, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, message} from "antd";
 import {CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, KeyOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined} from "@ant-design/icons";
@@ -61,9 +62,9 @@ const defaultRuntimeMaintenancePayload: RuntimeMaintenancePayload = {
 };
 
 const exactMaintenanceIntervalSeconds = [60, 120, 180, 240, 300, 360, 600, 720, 900, 1200, 1800, 3600];
-const maintenanceIntervalOptions = exactMaintenanceIntervalSeconds.map(seconds => ({
+const maintenanceIntervalOptions = () => exactMaintenanceIntervalSeconds.map(seconds => ({
     value: seconds,
-    label: seconds === 3600 ? "1 小时" : `${seconds / 60} 分钟`
+    label: seconds === 3600 ? getRes().runtimeScheduler.oneHour : formatText(getRes().common.minutes, {minutes: seconds / 60})
 }));
 
 const defaultRunPagination: RuntimePagination = {
@@ -159,7 +160,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
                 total: 0
             }));
         } catch (e) {
-            messageApi.error("调度数据加载失败");
+            messageApi.error(getRes().runtimeScheduler.loadError);
         } finally {
             setLoading(false);
         }
@@ -173,7 +174,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             setSettings(data);
             setSettingsLoaded(true);
         } catch (e) {
-            messageApi.error("外部触发设置加载失败");
+            messageApi.error(getRes().runtimeScheduler.settingsLoadError);
         } finally {
             setSettingsLoading(false);
         }
@@ -186,9 +187,9 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
     const copyText = async (text: string) => {
         try {
             await navigator.clipboard.writeText(text);
-            messageApi.success("已复制");
+            messageApi.success(getRes().runtimeScheduler.copied);
         } catch (e) {
-            messageApi.error("复制失败");
+            messageApi.error(getRes().runtimeScheduler.copyError);
         }
     };
 
@@ -204,7 +205,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
                 return;
             }
             setSettings(resp);
-            messageApi.success("已保存");
+            messageApi.success(getRes().common.saved);
         } finally {
             setSavingSettings(false);
         }
@@ -241,7 +242,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         const maintenancePayload = runtimeMaintenancePayload(automation.payload);
         setEditing(automation);
         form.setFieldsValue({
-            name: automation.name,
+            name: isRuntimeMaintenanceAutomation(automation) ? getRes().runtimeScheduler.maintenance : automation.name,
             capability: `${automation.pluginId}@@${automation.capabilityKey}`,
             cron: automation.cron,
             enabled: automation.enabled !== false,
@@ -306,7 +307,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             return;
         }
         setModalOpen(false);
-        messageApi.success("已保存");
+        messageApi.success(getRes().common.saved);
         await loadData(runPagination.current, runPagination.pageSize);
     };
 
@@ -321,15 +322,15 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已删除");
+        messageApi.success(getRes().runtimeScheduler.deleted);
         await loadData(runPagination.current, runPagination.pageSize);
     };
 
     const formatTickResult = (result?: SchedulerTickResult) => {
         if (!result) {
-            return "调度检查已触发";
+            return getRes().runtimeScheduler.tickTriggered;
         }
-        return `调度检查完成：执行 ${result.executedCount || 0}，失败 ${result.failedCount || 0}，跳过 ${result.skippedCount || 0}`;
+        return formatText(getRes().runtimeScheduler.tickResult, {executed: result.executedCount || 0, failed: result.failedCount || 0, skipped: result.skippedCount || 0});
     };
 
     const triggerTick = async () => {
@@ -349,34 +350,32 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
 
     const automationKey = (automation: Automation) => automation.id || `${automation.pluginId}:${automation.capabilityKey}`;
     const automationOwnerLabel = (pluginId: string, pluginName?: string) =>
-        pluginId === "__system__" ? "系统" : pluginNameLabel(pluginId, pluginName);
+        pluginId === "__system__" ? getRes().common.system : pluginNameLabel(pluginId, pluginName);
     const stripOwnerFromTargetLabel = (targetLabel: string | undefined, ownerLabel: string) => {
         const label = textOrEmpty(targetLabel);
         const ownerPrefix = `${ownerLabel} / `;
         if (label.startsWith(ownerPrefix)) {
             return textOrEmpty(label.substring(ownerPrefix.length));
         }
-        const systemPrefix = "系统任务 / ";
-        if (label.startsWith(systemPrefix)) {
-            return textOrEmpty(label.substring(systemPrefix.length));
-        }
         return label;
     };
     const automationTaskLabel = (automation: Automation) =>
+        isRuntimeMaintenanceAutomation(automation) ? getRes().runtimeScheduler.maintenance :
         textOrEmpty(automation.name) ||
         stripOwnerFromTargetLabel(automation.targetLabel, automationOwnerLabel(automation.pluginId, automation.pluginName)) ||
         capabilityLabel(automation.pluginId, automation.capabilityKey);
     const automationRunTaskLabel = (run: AutomationRun) =>
+        isRuntimeMaintenance(run.automationId, run.pluginId, run.capabilityKey) ? getRes().runtimeScheduler.maintenance :
         stripOwnerFromTargetLabel(run.targetLabel, automationOwnerLabel(run.pluginId, run.pluginName)) ||
         capabilityLabel(run.pluginId, run.capabilityKey);
     const automationLastRunDescription = (automation: Automation) => {
         const timeoutLabel = capabilityTimeoutLabel(automation.pluginId, automation.capabilityKey);
-        const lastRunLabel = `上次执行 ${formatEpoch(automation.lastRunAt)}`;
+        const lastRunLabel = formatText(getRes().runtimeScheduler.lastRun, {time: formatEpoch(automation.lastRunAt)});
         return timeoutLabel ? `${lastRunLabel} · ${timeoutLabel}` : lastRunLabel;
     };
     const automationStatusTag = (automation: Automation) => isSystemAutomation(automation)
-        ? <Tag color="processing">系统</Tag>
-        : automation.enabled === false ? <Tag>停用</Tag> : <Tag color="success">启用</Tag>;
+        ? <Tag color="processing">{getRes().common.system}</Tag>
+        : automation.enabled === false ? <Tag>{getRes().runtimeScheduler.disabled}</Tag> : <Tag color="success">{getRes().runtimeScheduler.enabled}</Tag>;
     const automationTaskCell = (automation: Automation) => (
         <Space direction="vertical" size={8} style={{width: "100%", minWidth: 0}}>
             {renderPlugin(
@@ -393,14 +392,13 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
                         {automationStatusTag(automation)}
                         <Tag style={{margin: 0}}>{automation.cron}</Tag>
                     </Space>
-                    <Text type="secondary" style={{fontSize: 12}}>
-                        下次 {formatEpoch(automation.nextRunAt)}
+                    <Text type="secondary" style={{fontSize: 12}}>{getRes().runtimeScheduler.next}{" "}{formatEpoch(automation.nextRunAt)}
                     </Text>
                 </Space>
             )}
         </Space>
     );
-    const runStatusTag = (value: string) => value === "success" ? <Tag color="success">成功</Tag> : <Tag color="error">失败</Tag>;
+    const runStatusTag = (value: string) => value === "success" ? <Tag color="success">{getRes().common.success}</Tag> : <Tag color="error">{getRes().common.failure}</Tag>;
     const automationRunCell = (run: AutomationRun) => (
         <Space direction="vertical" size={8} style={{width: "100%", minWidth: 0}}>
             {renderPlugin(
@@ -443,7 +441,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
   },
 
   async fetch() {
-    return new Response("ZrLog 调度 Worker 正在运行，定时任务通过 scheduled() 触发", {
+    return new Response(${JSON.stringify(getRes().runtimeScheduler.workerRunning)}, {
       headers: {"content-type": "text/plain; charset=utf-8"},
     });
   },
@@ -458,7 +456,7 @@ async function tick(env) {
   });
 
   if (!response.ok) {
-    throw new Error("ZrLog 调度检查失败: " + response.status + " " + await response.text());
+    throw new Error(${JSON.stringify(getRes().runtimeScheduler.workerFailed)} + response.status + " " + await response.text());
   }
 }`;
     const wranglerConfig = () => `name = "zrlog-scheduler"
@@ -484,9 +482,9 @@ crons = ["*/5 * * * *"]`;
                 return;
             }
             if (resp.item?.status === "success") {
-                messageApi.success("任务已执行");
+                messageApi.success(getRes().runtimeScheduler.runSuccess);
             } else {
-                messageApi.error(resp.item?.errorMessage || "任务执行失败");
+                messageApi.error(resp.item?.errorMessage || getRes().runtimeScheduler.runError);
             }
             await loadData(1, runPagination.pageSize);
         } finally {
@@ -496,60 +494,60 @@ crons = ["*/5 * * * *"]`;
 
     const automationColumns: ColumnsType<Automation> = [
         {
-            title: "任务",
+            title: getRes().runtimeScheduler.task,
             dataIndex: "name",
             render: (value: string, record) => automationTaskCell({...record, name: value})
         },
-        {title: "执行周期", dataIndex: "cron", width: 140, responsive: ["md"]},
+        {title: getRes().runtimeScheduler.schedule, dataIndex: "cron", width: 140, responsive: ["md"]},
         {
-            title: "状态",
+            title: getRes().common.status,
             dataIndex: "enabled",
             width: 100,
             responsive: ["md"],
             render: (_: boolean, record) => automationStatusTag(record)
         },
-        {title: "下次执行", dataIndex: "nextRunAt", width: 220, render: formatEpoch, responsive: ["md"]},
+        {title: getRes().runtimeScheduler.nextRun, dataIndex: "nextRunAt", width: 220, render: formatEpoch, responsive: ["md"]},
         {
-            title: "操作",
+            title: getRes().common.actions,
             key: "action",
             width: isMobile ? 104 : 230,
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"} wrap={!isMobile}>
-                    <Tooltip title="立即执行">
+                    <Tooltip title={getRes().runtimeScheduler.runNow}>
                         <Button
                             type={isMobile ? "text" : "link"}
                             size="small"
-                            aria-label="立即执行"
+                            aria-label={getRes().runtimeScheduler.runNow}
                             icon={<PlayCircleOutlined />}
                             disabled={!record.id}
                             loading={runningAutomations[automationKey(record)]}
                             onClick={() => runAutomationNow(record)}
                         >
-                            {!isMobile && "立即执行"}
+                            {!isMobile && getRes().runtimeScheduler.runNow}
                         </Button>
                     </Tooltip>
-                    <Tooltip title="编辑">
+                    <Tooltip title={getRes().runtimeScheduler.edit}>
                         <Button
                             type={isMobile ? "text" : "link"}
                             size="small"
-                            aria-label="编辑"
+                            aria-label={getRes().runtimeScheduler.edit}
                             icon={<EditOutlined />}
                             onClick={() => openEdit(record)}
                         >
-                            {!isMobile && "编辑"}
+                            {!isMobile && getRes().runtimeScheduler.edit}
                         </Button>
                     </Tooltip>
                     {record.deletable === false || record.system ? (
-                        <Tooltip title="删除">
-                            <Button danger type={isMobile ? "text" : "link"} size="small" aria-label="删除" icon={<DeleteOutlined />} disabled>
-                                {!isMobile && "删除"}
+                        <Tooltip title={getRes().runtimeScheduler.delete}>
+                            <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteOutlined />} disabled>
+                                {!isMobile && getRes().runtimeScheduler.delete}
                             </Button>
                         </Tooltip>
                     ) : (
-                        <Popconfirm title="删除这个定时任务？" okText="删除" okButtonProps={{danger: true}} cancelText="取消" onConfirm={() => deleteAutomation(record.id)}>
-                            <Tooltip title="删除">
-                                <Button danger type={isMobile ? "text" : "link"} size="small" aria-label="删除" icon={<DeleteOutlined />}>
-                                    {!isMobile && "删除"}
+                        <Popconfirm title={getRes().runtimeScheduler.confirmDelete} okText={getRes().runtimeScheduler.delete} okButtonProps={{danger: true}} cancelText={getRes().common.cancel} onConfirm={() => deleteAutomation(record.id)}>
+                            <Tooltip title={getRes().runtimeScheduler.delete}>
+                                <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteOutlined />}>
+                                    {!isMobile && getRes().runtimeScheduler.delete}
                                 </Button>
                             </Tooltip>
                         </Popconfirm>
@@ -561,20 +559,20 @@ crons = ["*/5 * * * *"]`;
 
     const runColumns: ColumnsType<AutomationRun> = [
         {
-            title: "任务",
+            title: getRes().runtimeScheduler.task,
             key: "target",
             render: (_, record) => automationRunCell(record)
         },
         {
-            title: "状态",
+            title: getRes().common.status,
             dataIndex: "status",
             width: 100,
             responsive: ["md"],
             render: runStatusTag
         },
-        {title: "耗时", dataIndex: "durationMs", width: 100, render: (value?: number) => value == null ? "-" : `${value} ms`, responsive: ["md"]},
-        {title: "开始时间", dataIndex: "startedAt", width: 220, render: formatEpoch, responsive: ["md"]},
-        {title: "错误", dataIndex: "errorMessage", render: formatTime, responsive: ["lg"]}
+        {title: getRes().common.duration, dataIndex: "durationMs", width: 100, render: (value?: number) => value == null ? "-" : `${value} ms`, responsive: ["md"]},
+        {title: getRes().common.startedAt, dataIndex: "startedAt", width: 220, render: formatEpoch, responsive: ["md"]},
+        {title: getRes().common.error, dataIndex: "errorMessage", render: formatTime, responsive: ["lg"]}
     ];
     const editingRuntimeMaintenance = isRuntimeMaintenanceAutomation(editing);
     const editingLegacyCustomRuntimeMaintenance = editingRuntimeMaintenance && !hasExplicitRuntimeMaintenanceInterval(editing);
@@ -587,14 +585,14 @@ crons = ["*/5 * * * *"]`;
             {contextHolder}
             <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
                 <Space>
-                    <Text strong>定时任务</Text>
-                    <Button type="link" size="small" icon={<PlusOutlined />} disabled={scheduledCapabilities.length === 0} onClick={openCreate}>新建任务</Button>
+                    <Text strong>{getRes().runtimeScheduler.tasks}</Text>
+                    <Button type="link" size="small" icon={<PlusOutlined />} disabled={scheduledCapabilities.length === 0} onClick={openCreate}>{getRes().runtimeScheduler.create}</Button>
                 </Space>
                 <Space wrap style={isMobile ? {width: "100%"} : undefined}>
-                    <Tooltip title="触发一次调度检查，只执行已到期且启用的任务；未到期任务请使用行内立即执行">
-                        <Button icon={<PlayCircleOutlined />} loading={ticking} onClick={triggerTick} style={isMobile ? {flex: 1} : undefined}>检查到期任务</Button>
+                    <Tooltip title={getRes().runtimeScheduler.tickTip}>
+                        <Button icon={<PlayCircleOutlined />} loading={ticking} onClick={triggerTick} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.checkDue}</Button>
                     </Tooltip>
-                    <Button type="primary" icon={<CodeOutlined />} onClick={openExternalDrawer} style={isMobile ? {flex: 1} : undefined}>外部触发</Button>
+                    <Button type="primary" icon={<CodeOutlined />} onClick={openExternalDrawer} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.externalTrigger}</Button>
                 </Space>
             </div>
             <Table<Automation>
@@ -606,7 +604,7 @@ crons = ["*/5 * * * *"]`;
                 scroll={isMobile ? undefined : {x: 1040}}
             />
 
-            <Text strong>定时任务执行记录</Text>
+            <Text strong>{getRes().runtimeScheduler.runs}</Text>
             <Table<AutomationRun>
                 loading={loading}
                 rowKey="id"
@@ -618,31 +616,28 @@ crons = ["*/5 * * * *"]`;
             />
 
             <Drawer
-                title="外部触发"
+                title={getRes().runtimeScheduler.externalTrigger}
                 open={externalDrawerOpen}
                 width={isMobile ? "100%" : 640}
                 onClose={() => setExternalDrawerOpen(false)}
                 destroyOnClose
                 loading={settingsLoading}
-                extra={<Button icon={<SaveOutlined />} type="primary" loading={savingSettings} disabled={settingsLoading || !settingsLoaded} onClick={saveSchedulerSettings}>保存</Button>}
+                extra={<Button icon={<SaveOutlined />} type="primary" loading={savingSettings} disabled={settingsLoading || !settingsLoaded} onClick={saveSchedulerSettings}>{getRes().runtimeScheduler.save}</Button>}
             >
                 <Space direction="vertical" size={16} style={{width: "100%"}}>
-                    <Text type="secondary">
-                        开启外部入口后，外部调度器可通过 POST 请求触发一次到期任务检查；接口使用 Authorization: Bearer token 校验
-                    </Text>
+                    <Text type="secondary">{getRes().runtimeScheduler.externalHelp}</Text>
                     <Input
-                        addonBefore="外部地址"
+                        addonBefore={getRes().runtimeScheduler.externalAddress}
                         placeholder="https://blog.example.com"
                         value={settings.externalHost || ""}
                         onChange={event => setSettings({...settings, externalHost: event.target.value})}
                     />
-                    <Text type="secondary">
-                        生效地址用于生成接入命令：{settings.effectiveExternalHost || "-"}
+                    <Text type="secondary">{getRes().runtimeScheduler.effectiveAddress}{settings.effectiveExternalHost || "-"}
                     </Text>
                     {settings.providers.map(provider => (
                         <Space key={provider.id} direction="vertical" size={10} style={{width: "100%"}}>
                             <Space align="center">
-                                <Text>外部入口</Text>
+                                <Text>{getRes().runtimeScheduler.externalEndpoint}</Text>
                                 <Switch checked={provider.enabled === true} onChange={checked => setProviderEnabled(provider.id, checked)} />
                             </Space>
                             <Input
@@ -650,7 +645,7 @@ crons = ["*/5 * * * *"]`;
                                 addonBefore={<Tooltip title="Authorization Bearer token"><KeyOutlined /> Bearer token</Tooltip>}
                                 value={provider.secret}
                                 addonAfter={(
-                                    <Tooltip title="复制 Bearer token">
+                                    <Tooltip title={getRes().runtimeScheduler.copyToken}>
                                         <Button
                                             type="text"
                                             size="small"
@@ -668,10 +663,10 @@ crons = ["*/5 * * * *"]`;
                                     </Tooltip>
                                 )}
                             />
-                            <Text type="secondary">复制命令时会自动把这个 token 写入 Authorization 请求头</Text>
+                            <Text type="secondary">{getRes().runtimeScheduler.tokenHelp}</Text>
                         </Space>
                     ))}
-                    <Text strong>接入方式</Text>
+                    <Text strong>{getRes().runtimeScheduler.integration}</Text>
                     <Tabs
                         items={[
                             {
@@ -679,9 +674,9 @@ crons = ["*/5 * * * *"]`;
                                 label: "curl",
                                 children: (
                                     <Space direction="vertical" size={12} style={{width: "100%"}}>
-                                        <Text type="secondary">适合系统定时器、GitHub Actions 或其它可执行命令的调度器</Text>
+                                        <Text type="secondary">{getRes().runtimeScheduler.curlHelp}</Text>
                                         <Input.TextArea readOnly autoSize value={curlCommand(helpProvider?.secret || "")} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(curlCommand(helpProvider?.secret || ""))}>复制 curl</Button>
+                                        <Button icon={<CopyOutlined />} onClick={() => copyText(curlCommand(helpProvider?.secret || ""))}>{getRes().runtimeScheduler.copyCurl}</Button>
                                     </Space>
                                 )
                             },
@@ -690,14 +685,14 @@ crons = ["*/5 * * * *"]`;
                                 label: "Cloudflare Worker",
                                 children: (
                                     <Space direction="vertical" size={12} style={{width: "100%"}}>
-                                        <Text type="secondary">Cloudflare 定时触发器会调用 scheduled() 执行调度检查；直接访问 Worker 只返回运行状态</Text>
+                                        <Text type="secondary">{getRes().runtimeScheduler.workerHelp}</Text>
                                         <Text strong>src/index.js</Text>
                                         <Input.TextArea readOnly autoSize value={workerCode()} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(workerCode())}>复制 Worker 代码</Button>
+                                        <Button icon={<CopyOutlined />} onClick={() => copyText(workerCode())}>{getRes().runtimeScheduler.copyWorker}</Button>
                                         <Text strong>wrangler.toml</Text>
                                         <Input.TextArea readOnly autoSize value={wranglerConfig()} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(wranglerConfig())}>复制 wrangler 配置</Button>
-                                        <Text type="secondary">密钥：wrangler secret put ZRLOG_SCHEDULER_SECRET</Text>
+                                        <Button icon={<CopyOutlined />} onClick={() => copyText(wranglerConfig())}>{getRes().runtimeScheduler.copyWrangler}</Button>
+                                        <Text type="secondary">{getRes().runtimeScheduler.secretCommand}</Text>
                                     </Space>
                                 )
                             }
@@ -707,7 +702,7 @@ crons = ["*/5 * * * *"]`;
             </Drawer>
 
             <Modal
-                title={editing ? "编辑定时任务" : "新建定时任务"}
+                title={editing ? getRes().runtimeScheduler.editTitle : getRes().runtimeScheduler.createTitle}
                 width={isMobile ? "calc(100vw - 24px)" : undefined}
                 open={modalOpen}
                 onOk={saveAutomation}
@@ -716,10 +711,10 @@ crons = ["*/5 * * * *"]`;
                 styles={{body: {maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: 4}}}
             >
                 <Form form={form} layout="vertical">
-                    <Form.Item label="任务名称" name="name" rules={[{required: true, message: "请输入任务名称"}]}>
+                    <Form.Item label={getRes().runtimeScheduler.taskName} name="name" rules={[{required: true, message: getRes().runtimeScheduler.nameRequired}]}>
                         <Input disabled={editingSystemAutomation} />
                     </Form.Item>
-                    <Form.Item label="插件任务" name="capability" hidden={!!editing} rules={[{required: !editing, message: "请选择插件任务"}]}>
+                    <Form.Item label={getRes().runtimeScheduler.pluginTask} name="capability" hidden={!!editing} rules={[{required: !editing, message: getRes().runtimeScheduler.taskRequired}]}>
                         <Select
                             onChange={(value) => {
                                 const [pluginId, key] = value.split("@@");
@@ -740,84 +735,84 @@ crons = ["*/5 * * * *"]`;
                         />
                     </Form.Item>
                     {(!editingRuntimeMaintenance || editingLegacyCustomRuntimeMaintenance) && (
-                        <Form.Item label="执行周期" name="cron" rules={[{required: true, message: "请输入执行周期"}]}>
+                        <Form.Item label={getRes().runtimeScheduler.schedule} name="cron" rules={[{required: true, message: getRes().runtimeScheduler.scheduleRequired}]}>
                             <Input placeholder="*/5 * * * *" />
                         </Form.Item>
                     )}
                     {!editingSystemAutomation && (
-                        <Form.Item label="启用" name="enabled" valuePropName="checked">
+                        <Form.Item label={getRes().runtimeScheduler.enabled} name="enabled" valuePropName="checked">
                             <Switch />
                         </Form.Item>
                     )}
                     {editingRuntimeMaintenance ? (
                         <Space direction="vertical" size={12} style={{width: "100%"}}>
-                            <Form.Item label="加载策略" name="maintenanceLoadStrategy" rules={[{required: true, message: "请选择加载策略"}]}>
+                            <Form.Item label={getRes().runtimeScheduler.loadStrategy} name="maintenanceLoadStrategy" rules={[{required: true, message: getRes().runtimeScheduler.strategyRequired}]}>
                                 <Segmented
                                     block
                                     options={[
-                                        {label: "按需加载", value: "onDemand"},
-                                        {label: "启动时加载", value: "startup"}
+                                        {label: getRes().runtimeScheduler.onDemand, value: "onDemand"},
+                                        {label: getRes().runtimeScheduler.onStartup, value: "startup"}
                                     ]}
                                 />
                             </Form.Item>
-                            <Form.Item label="缺失包自动下载" name="maintenanceAutoDownloadMissingPluginFileEnabled" valuePropName="checked">
+                            <Form.Item label={getRes().runtimeScheduler.autoDownload} name="maintenanceAutoDownloadMissingPluginFileEnabled" valuePropName="checked">
                                 <Switch />
                             </Form.Item>
                             {!editingLegacyCustomRuntimeMaintenance && (
                                 <Form.Item
-                                    label="维护间隔"
+                                    label={getRes().runtimeScheduler.maintenanceInterval}
                                     name="maintenanceIdleScanIntervalSeconds"
-                                    rules={[{required: true, message: "请选择维护间隔"}]}
+                                    rules={[{required: true, message: getRes().runtimeScheduler.intervalRequired}]}
                                 >
-                                    <Select options={maintenanceIntervalOptions} />
+                                    <Select options={maintenanceIntervalOptions()} />
                                 </Form.Item>
                             )}
                             {showMaintenanceOnDemandSettings && (
                                 <Form.Item
-                                    label="运行插件上限"
+                                    label={getRes().runtimeScheduler.maxRunning}
                                     name="maintenanceMaxRunningPlugins"
-                                    rules={[{required: true, message: "请输入运行插件上限"}]}
+                                    rules={[{required: true, message: getRes().runtimeScheduler.maxRunningRequired}]}
                                 >
                                     <InputNumber min={1} max={32} precision={0} style={{width: "100%"}} />
                                 </Form.Item>
                             )}
                             <Form.Item
-                                label="并发启动上限"
+                                label={getRes().runtimeScheduler.maxStarts}
                                 name="maintenanceMaxConcurrentStarts"
-                                rules={[{required: true, message: "请输入并发启动上限"}]}
+                                rules={[{required: true, message: getRes().runtimeScheduler.maxStartsRequired}]}
                             >
                                 <InputNumber min={1} max={8} precision={0} style={{width: "100%"}} />
                             </Form.Item>
                             <Form.Item
-                                label="失败重试间隔"
+                                label={getRes().runtimeScheduler.retryInterval}
                                 name="maintenanceStartFailureBackoffSeconds"
-                                rules={[{required: true, message: "请输入失败重试间隔"}]}
+                                rules={[{required: true, message: getRes().runtimeScheduler.retryRequired}]}
                             >
-                                <InputNumber min={1} max={3600} precision={0} addonAfter="秒" style={{width: "100%"}} />
+                                <InputNumber min={1} max={3600} precision={0} addonAfter={getRes().common.secondsUnit} style={{width: "100%"}} />
                             </Form.Item>
                             {showMaintenanceOnDemandSettings && (
-                                <Form.Item label="空闲回收" name="maintenanceIdleStopEnabled" valuePropName="checked">
+                                <Form.Item label={getRes().runtimeScheduler.idleStop} name="maintenanceIdleStopEnabled" valuePropName="checked">
                                     <Switch />
                                 </Form.Item>
                             )}
                             {showMaintenanceIdleTimeout && (
                                 <Form.Item
-                                    label="空闲秒数"
+                                    label={getRes().runtimeScheduler.idleSeconds}
                                     name="maintenanceIdleTimeoutSeconds"
-                                    rules={[{required: true, message: "请输入空闲秒数"}]}
+                                    rules={[{required: true, message: getRes().runtimeScheduler.idleRequired}]}
                                 >
-                                    <InputNumber min={10} max={86400} addonAfter="秒" style={{width: "100%"}} />
+                                    <InputNumber min={10} max={86400} addonAfter={getRes().common.secondsUnit} style={{width: "100%"}} />
                                 </Form.Item>
                             )}
                         </Space>
                     ) : (
-                        <Form.Item label="任务参数 JSON" name="payload" rules={[{
+                        <Form.Item label={getRes().runtimeScheduler.payload} name="payload" rules={[{
                             validator: (_, value) => {
                                 try {
                                     JSON.parse(value || "{}");
                                     return Promise.resolve();
                                 } catch (e) {
-                                    return Promise.reject(new Error("任务参数必须是合法 JSON"));
+                                    return Promise.reject(new Error(getRes().runtimeScheduler.payloadInvalid));
                                 }
                             }
                         }]}>

@@ -1,3 +1,4 @@
+import {getRes} from "../i18n/plugin";
 import React from "react";
 import {Button, Grid, Space, Tabs, Tooltip, Typography} from "antd";
 import {ArrowLeftOutlined} from "@ant-design/icons";
@@ -28,18 +29,18 @@ const RuntimeCenter: React.FC<RuntimeCenterProps> = ({data}) => {
             <Space direction="vertical" size={isMobile ? 12 : 18} style={{width: "100%"}}>
                 <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
                     <Space align="start">
-                        <Tooltip title="返回插件列表">
+                        <Tooltip title={getRes().runtime.back}>
                             <Button
                                 type="text"
                                 icon={<ArrowLeftOutlined />}
-                                aria-label="返回插件列表"
+                                aria-label={getRes().runtime.back}
                                 onClick={() => navigate(backPath())}
                                 style={{marginTop: -1}}
                             />
                         </Tooltip>
                         <div>
-                            <Title level={2} style={{margin: 0, fontSize: isMobile ? 20 : 22}}>插件运行时</Title>
-                            {!isMobile && <Text type="secondary">按需加载、调度、通知与调用状态</Text>}
+                            <Title level={2} style={{margin: 0, fontSize: isMobile ? 20 : 22}}>{getRes().runtime.title}</Title>
+                            {!isMobile && <Text type="secondary">{getRes().runtime.description}</Text>}
                         </div>
                     </Space>
                 </div>
@@ -52,22 +53,22 @@ const RuntimeCenter: React.FC<RuntimeCenterProps> = ({data}) => {
                     items={[
                         {
                             key: "scheduler",
-                            label: "调度中心",
+                            label: getRes().runtime.scheduler,
                             children: <SchedulerRuntimeTab dark={data.dark} />
                         },
                         {
                             key: "runtime",
-                            label: "运行态",
+                            label: getRes().runtime.states,
                             children: <RuntimeStatesTab dark={data.dark} />
                         },
                         {
                             key: "notification",
-                            label: "通知",
+                            label: getRes().common.notification,
                             children: <NotificationRuntimeTab />
                         },
                         {
                             key: "services",
-                            label: "服务",
+                            label: getRes().common.service,
                             children: <ServiceRuntimeTab />
                         }
                     ]}

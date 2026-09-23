@@ -1,3 +1,4 @@
+import {getRes} from "../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Result} from "antd";
 
@@ -21,7 +22,7 @@ const DownloadResult: React.FC = () => {
             subTitle=""
             extra={
                 <a href={viewLink}>
-                    <Button type="primary">查看</Button>
+                    <Button type="primary">{getRes().downloadResult.view}</Button>
                 </a>
             }
         />

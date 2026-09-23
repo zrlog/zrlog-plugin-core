@@ -1,3 +1,4 @@
+import {getRes} from "../../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Grid, Space, Table, Tag, Tooltip, Typography, message} from "antd";
 import {CheckOutlined, ReloadOutlined, SendOutlined} from "@ant-design/icons";
@@ -39,7 +40,7 @@ const NotificationRuntimeTab: React.FC = () => {
                 total: 0
             }));
         } catch (e) {
-            messageApi.error("通知数据加载失败");
+            messageApi.error(getRes().runtimeNotification.loadError);
         } finally {
             setLoading(false);
         }
@@ -59,7 +60,7 @@ const NotificationRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已保存");
+        messageApi.success(getRes().common.saved);
         await loadData(deliveryPagination.current, deliveryPagination.pageSize);
     };
 
@@ -71,7 +72,7 @@ const NotificationRuntimeTab: React.FC = () => {
             messageApi.error(resp.message);
             return;
         }
-        messageApi.success("已恢复自动选择");
+        messageApi.success(getRes().common.autoRestored);
         await loadData(deliveryPagination.current, deliveryPagination.pageSize);
     };
 
@@ -82,27 +83,27 @@ const NotificationRuntimeTab: React.FC = () => {
         params.set("capabilityKey", row.capabilityKey);
         const {data: resp} = await axios.post(apiPath("/runtime-notification/test"), params.toString());
         if (resp.code > 0 || !resp.success) {
-            messageApi.error(resp.message || resp.delivery?.errorMessage || "测试通知失败");
+            messageApi.error(resp.message || resp.delivery?.errorMessage || getRes().runtimeNotification.testError);
             await loadData(deliveryPagination.current, deliveryPagination.pageSize);
             return;
         }
-        messageApi.success("测试通知已发送");
+        messageApi.success(getRes().runtimeNotification.testSent);
         await loadData(1, deliveryPagination.pageSize);
     };
 
     const statusTags = (selected: boolean, reviewRequired: boolean, confirmed: boolean) => (
         <Space size={[4, 4]} wrap>
-            {selected && <Tag color="success">默认</Tag>}
-            {reviewRequired && <Tag color="warning">需确认</Tag>}
-            {confirmed && <Tag color="blue">已确认</Tag>}
+            {selected && <Tag color="success">{getRes().runtimeNotification.default}</Tag>}
+            {reviewRequired && <Tag color="warning">{getRes().common.reviewRequired}</Tag>}
+            {confirmed && <Tag color="blue">{getRes().common.confirmed}</Tag>}
         </Space>
     );
 
-    const deliveryStatusTag = (value?: string) => value === "success" ? <Tag color="success">成功</Tag> : <Tag color="error">失败</Tag>;
+    const deliveryStatusTag = (value?: string) => value === "success" ? <Tag color="success">{getRes().common.success}</Tag> : <Tag color="error">{getRes().common.failure}</Tag>;
 
     const providerDeliveryCell = (record: NotificationProviderRow) => {
         if (!record.lastDeliveryStatus) {
-            return <Text type="secondary">暂无</Text>;
+            return <Text type="secondary">{getRes().runtimeNotification.none}</Text>;
         }
         return (
             <Space direction="vertical" size={4} style={{width: "100%", minWidth: 0}}>
@@ -124,7 +125,7 @@ const NotificationRuntimeTab: React.FC = () => {
             {renderCapability(record.providerPluginId, record.capabilityKey, record.capabilityLabel, record.providerPluginPreviewImageBase64, record.providerPluginName)}
             {isMobile && (
                 <Space direction="vertical" size={4}>
-                    <Text type="secondary" style={{fontSize: 12}}>通道 {record.channel}</Text>
+                    <Text type="secondary" style={{fontSize: 12}}>{getRes().runtimeNotification.channel}{" "}{record.channel}</Text>
                     {statusTags(record.selected, record.reviewRequired, record.confirmed)}
                     {providerDeliveryCell(record)}
                 </Space>
@@ -133,45 +134,45 @@ const NotificationRuntimeTab: React.FC = () => {
     );
 
     const providerColumns: ColumnsType<NotificationProviderRow> = [
-        {title: "通道", dataIndex: "channel", width: 120, responsive: ["md"]},
+        {title: getRes().runtimeNotification.channel, dataIndex: "channel", width: 120, responsive: ["md"]},
         {
-            title: "通知插件",
+            title: getRes().runtimeNotification.plugin,
             key: "provider",
             render: (_, record) => providerCell(record)
         },
         {
-            title: "状态",
+            title: getRes().common.status,
             key: "status",
             width: 180,
             responsive: ["md"],
             render: (_, record) => statusTags(record.selected, record.reviewRequired, record.confirmed)
         },
         {
-            title: "最近状态",
+            title: getRes().runtimeNotification.latestStatus,
             key: "lastDelivery",
             width: 220,
             responsive: ["md"],
             render: (_, record) => providerDeliveryCell(record)
         },
         {
-            title: "操作",
+            title: getRes().common.actions,
             key: "action",
             width: isMobile ? 128 : 270,
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
-                    <Tooltip title="发送测试通知">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<SendOutlined />} aria-label="发送测试通知" onClick={() => testProvider(record)}>
-                            {!isMobile && "测试"}
+                    <Tooltip title={getRes().runtimeNotification.sendTest}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<SendOutlined />} aria-label={getRes().runtimeNotification.sendTest} onClick={() => testProvider(record)}>
+                            {!isMobile && getRes().runtimeNotification.test}
                         </Button>
                     </Tooltip>
-                    <Tooltip title="设为默认">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label="设为默认" disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
-                            {!isMobile && "设为默认"}
+                    <Tooltip title={getRes().common.setDefault}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
+                            {!isMobile && getRes().common.setDefault}
                         </Button>
                     </Tooltip>
-                    <Tooltip title="自动选择">
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label="自动选择" onClick={() => restoreAutoProvider(record.channel)}>
-                            {!isMobile && "自动选择"}
+                    <Tooltip title={getRes().common.autoSelect}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.channel)}>
+                            {!isMobile && getRes().common.autoSelect}
                         </Button>
                     </Tooltip>
                 </Space>
@@ -200,24 +201,24 @@ const NotificationRuntimeTab: React.FC = () => {
     );
 
     const deliveryColumns: ColumnsType<NotificationDelivery> = [
-        {title: "通道", dataIndex: "channel", width: 120, responsive: ["md"]},
-        {title: "通知来源", key: "capability", render: (_, record) => deliveryCell(record)},
+        {title: getRes().runtimeNotification.channel, dataIndex: "channel", width: 120, responsive: ["md"]},
+        {title: getRes().runtimeNotification.source, key: "capability", render: (_, record) => deliveryCell(record)},
         {
-            title: "状态",
+            title: getRes().common.status,
             dataIndex: "status",
             width: 100,
             responsive: ["md"],
             render: deliveryStatusTag
         },
-        {title: "时间", dataIndex: "createdAt", width: 240, render: formatEpoch, responsive: ["md"]},
-        {title: "错误", dataIndex: "errorMessage", render: formatTime, responsive: ["md"]}
+        {title: getRes().runtimeNotification.time, dataIndex: "createdAt", width: 240, render: formatEpoch, responsive: ["md"]},
+        {title: getRes().common.error, dataIndex: "errorMessage", render: formatTime, responsive: ["md"]}
     ];
 
     return (
         <Space direction="vertical" size={16} style={{width: "100%"}}>
             {contextHolder}
             <Table<NotificationProviderRow> loading={loading} rowKey={record => `${record.channel}:${record.providerPluginId}:${record.capabilityKey}`} columns={providerColumns} dataSource={providers} pagination={false} scroll={isMobile ? undefined : {x: 760}} />
-            <Text strong>最近投递</Text>
+            <Text strong>{getRes().runtimeNotification.deliveries}</Text>
             <Table<NotificationDelivery>
                 loading={loading}
                 rowKey="id"

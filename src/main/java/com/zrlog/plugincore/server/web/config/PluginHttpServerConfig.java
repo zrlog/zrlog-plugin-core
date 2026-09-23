@@ -21,6 +21,7 @@ import com.zrlog.plugincore.server.web.controller.RuntimeStateApiController;
 import com.zrlog.plugincore.server.web.controller.SettingController;
 import com.zrlog.plugincore.server.web.controller.open.SchedulerController;
 import com.zrlog.plugincore.server.web.handler.PluginHandle;
+import com.zrlog.plugincore.server.util.PluginI18n;
 
 import java.util.List;
 import java.util.Objects;
@@ -106,7 +107,16 @@ public class PluginHttpServerConfig extends AbstractServerConfig {
                 new ArrayBlockingQueue<>(REQUEST_QUEUE_CAPACITY),
                 namedThreadFactory("plugin-http-request-"),
                 new ThreadPoolExecutor.CallerRunsPolicy()
-        );
+        ) {
+            @Override
+            public void execute(Runnable command) {
+                super.execute(() -> {
+                    try (PluginI18n.Scope ignored = PluginI18n.open(null)) {
+                        command.run();
+                    }
+                });
+            }
+        };
     }
 
     static ThreadPoolExecutor newDecodeExecutor() {

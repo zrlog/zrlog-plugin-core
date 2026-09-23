@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.common.dao.dto.PageData;
 import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.runtime.notification.NotificationDelivery;
@@ -31,11 +33,11 @@ public final class RuntimeApiModels {
         }
 
         public static Response success() {
-            return new Response(0, "成功");
+            return new Response(0, PluginI18n.text("plugin.common.success"));
         }
 
         public static Response error(String message) {
-            return new Response(1, message == null ? "失败" : message);
+            return new Response(1, message == null ? PluginI18n.text("plugin.common.error") : message);
         }
 
         public int getCode() {
@@ -59,11 +61,11 @@ public final class RuntimeApiModels {
         private List<T> items = new ArrayList<T>();
 
         public ItemsResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public ItemsResponse(List<? extends T> items) {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
             this.items = items == null ? new ArrayList<T>() : new ArrayList<T>(items);
         }
 
@@ -83,11 +85,11 @@ public final class RuntimeApiModels {
         private Long totalElements;
 
         public PageResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public PageResponse(List<? extends T> rows, PageData<?> pageData) {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
             this.rows = rows == null ? new ArrayList<T>() : new ArrayList<T>(rows);
             this.page = pageData.getPage();
             this.size = pageData.getSize();
@@ -131,11 +133,11 @@ public final class RuntimeApiModels {
         private T item;
 
         public ItemResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public ItemResponse(T item) {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
             this.item = item;
         }
 
@@ -152,11 +154,11 @@ public final class RuntimeApiModels {
         private SchedulerTickResult result;
 
         public ResultResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public ResultResponse(SchedulerTickResult result) {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
             this.result = result;
         }
 
@@ -175,7 +177,7 @@ public final class RuntimeApiModels {
         private Boolean success;
 
         public ActionResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public static ActionResponse started() {
@@ -231,7 +233,7 @@ public final class RuntimeApiModels {
         private String systemTimezone;
 
         public SchedulerSettingsResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public Boolean getEnabled() {
@@ -302,7 +304,7 @@ public final class RuntimeApiModels {
         private Long startFailureBackoffSeconds;
 
         public RuntimeSettingsResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public RuntimeSettingsResponse(PluginRuntimeSetting setting) {
@@ -407,11 +409,11 @@ public final class RuntimeApiModels {
         private NotificationDeliveryResponse delivery;
 
         public NotificationTestResponse() {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
         }
 
         public NotificationTestResponse(boolean success, NotificationDeliveryResponse delivery) {
-            super(0, "成功");
+            super(0, PluginI18n.text("plugin.common.success"));
             this.success = success;
             this.delivery = delivery;
         }

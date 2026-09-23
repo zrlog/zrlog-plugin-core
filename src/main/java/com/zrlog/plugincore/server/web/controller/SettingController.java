@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 
 import com.hibegin.http.annotation.ResponseBody;
 import com.hibegin.http.server.web.Controller;
@@ -19,6 +21,6 @@ public class SettingController extends Controller {
     public PluginApiModels.ActionResponse update() throws SQLException {
         PluginCoreDAO.getInstance().update(pluginCore -> pluginCore.getSetting().setDisableAutoDownloadLostFile(request.getParaToBool(
                 "disableAutoDownloadLostFile")));
-        return PluginApiModels.ActionResponse.success("成功");
+        return PluginApiModels.ActionResponse.success(PluginI18n.text("plugin.common.success"));
     }
 }

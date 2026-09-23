@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 
 import com.google.gson.Gson;
 import com.hibegin.http.server.web.Controller;
@@ -47,7 +49,9 @@ public class PluginController extends Controller {
      */
     public void index() throws IOException {
         Document document = Jsoup.parse(Objects.requireNonNull(PluginController.class.getResourceAsStream("/static/index.html")), "UTF-8", "");
-        document.title("插件管理");
+        document.title(PluginI18n.text("plugin.manage.title"));
+        document.selectFirst("html").attr("lang", PluginI18n.getLanguage().replace('_', '-'));
+        document.select("noscript").forEach(element -> element.text(PluginI18n.text("plugin.manage.javascriptRequired")));
         document.body().removeAttr("class");
         PluginApiModels.PluginListResponse pluginData = new PluginApiController(request, response).plugins();
         if (Boolean.TRUE.equals(pluginData.getDark())) {
@@ -76,18 +80,18 @@ public class PluginController extends Controller {
             File file = new File(path + "/" + fileName);
             if (file.exists()) {
                 if (!pluginBootstrap().startPluginFileForMetadata(file)) {
-                    throw new RuntimeException("插件已经存在，但启动插件获取元数据超时");
+                    throw new RuntimeException(PluginI18n.text("plugin.download.metadataTimeout"));
                 }
-                response.redirect("/admin/plugins/downloadResult?message=插件已经存在，已启动插件" +
-                        "&pluginName=" + pluginShortName);
+                response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(PluginI18n.text("plugin.download.alreadyExists")) +
+                        "&pluginName=" + encodeQuery(pluginShortName));
                 return;
             }
             pluginBootstrap().downloadAndStartPlugin(PluginFiles.getPluginFile(pluginShortName).getName());
-            response.redirect("/admin/plugins/downloadResult?message=下载插件成功" +
-                    "&pluginName=" + pluginShortName);
+            response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(PluginI18n.text("plugin.download.success")) +
+                    "&pluginName=" + encodeQuery(pluginShortName));
         } catch (Exception e) {
-            response.redirect("/admin/plugins/downloadResult?message=" + e.getMessage() +
-                    "&pluginName=" + pluginShortName);
+            response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(e.getMessage()) +
+                    "&pluginName=" + encodeQuery(pluginShortName));
             LOGGER.log(Level.FINER, "download error ", e);
         }
     }
@@ -153,6 +157,10 @@ public class PluginController extends Controller {
 
     private String serviceCapabilityKey(String serviceName, PluginCapability provider) {
         return provider == null || StringUtils.isEmpty(provider.getKey()) ? serviceName : provider.getKey();
+    }
+
+    private static String encodeQuery(String value) {
+        return java.net.URLEncoder.encode(Objects.toString(value, ""), java.nio.charset.StandardCharsets.UTF_8);
     }
 
     private KvRepository kvStore() {

@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.http.annotation.ResponseBody;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -47,7 +49,7 @@ public class RuntimeServiceApiController extends RuntimeBaseApiController {
                 .findFirst()
                 .orElse(null);
         if (provider == null) {
-            return error("服务能力不存在");
+            return error(PluginI18n.text("plugin.service.notFound"));
         }
         ServiceProviderSetting providerSetting = new ServiceProviderSetting();
         providerSetting.setServiceName(serviceName);
@@ -81,7 +83,7 @@ public class RuntimeServiceApiController extends RuntimeBaseApiController {
     public Response commentProviderUpdate() {
         String shortName = getRequest().getParaToStr("shortName");
         if (findPluginByShortName(commentProviderPlugins(), shortName) == null) {
-            return error("评论插件不存在");
+            return error(PluginI18n.text("plugin.service.commentNotFound"));
         }
         try {
             new WebSiteDAO().saveOrUpdateChanged(COMMENT_PLUGIN_NAME_KEY, shortName);

@@ -5,10 +5,13 @@ import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugin.RunConstants;
 import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.runtime.notification.NotificationDelivery;
+import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomation;
+import com.zrlog.plugincore.server.util.PluginI18n;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Collections;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -61,6 +64,24 @@ public class RuntimeApiControllerTest {
         assertEquals(2, latest.size());
         assertEquals("success", latest.get("email\nemail-plugin\nnotification.email.send").getStatus());
         assertEquals(Long.valueOf(200L), latest.get("email\nemail-plugin\nnotification.email.send").getCreatedAt());
+    }
+
+    @Test
+    public void shouldTranslateSystemTaskResponseWithoutChangingStoredTask() {
+        PluginAutomation task = new PluginAutomation();
+        task.setId("system:plugin-runtime-maintenance");
+        task.setPluginId("__system__");
+        task.setCapabilityKey("plugin.runtime.maintenance");
+        task.setName("运行态维护");
+        try (PluginI18n.Scope ignored = PluginI18n.open("en_US")) {
+            RuntimeApiModels.AutomationResponse response = RuntimeApiResponses.automationResponse(
+                    task, Collections.emptyMap(), Collections.emptyMap());
+            assertEquals("Runtime maintenance", response.getName());
+            assertEquals("System", response.getPluginName());
+            assertEquals("System task / Runtime maintenance", response.getTargetLabel());
+            assertEquals("Success", RuntimeApiModels.Response.success().getMessage());
+        }
+        assertEquals("运行态维护", task.getName());
     }
 
     private NotificationDelivery delivery(String channel, String pluginId, String capabilityKey, String status, Long createdAt) {

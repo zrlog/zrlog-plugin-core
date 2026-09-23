@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.zrlog.plugincore.server.util.PluginI18n;
+
 import com.hibegin.common.dao.dto.PageData;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.message.PluginCapability;
@@ -85,6 +87,9 @@ final class RuntimeApiResponses {
                                                  Map<String, Plugin> pluginsById,
                                                  Map<String, PluginCapability> capabilitiesByKey) {
         AutomationResponse response = AutomationResponse.from(automation);
+        if (RuntimeSystemAutomations.isRuntimeMaintenanceIdentity(automation.getId(), automation.getPluginId(), automation.getCapabilityKey())) {
+            response.setName(PluginI18n.text("plugin.scheduler.maintenance"));
+        }
         Plugin plugin = pluginsById.get(automation.getPluginId());
         PluginCapability capability = capabilitiesByKey.get(capabilityMapKey(automation.getPluginId(), automation.getCapabilityKey()));
         response.setPluginName(runtimePluginDisplayName(automation.getPluginId(), plugin, capability));
@@ -200,7 +205,7 @@ final class RuntimeApiResponses {
     }
 
     static String pluginDisplayName(Plugin plugin) {
-        return plugin == null || isBlank(plugin.getName()) ? "未命名插件" : plugin.getName();
+        return plugin == null || isBlank(plugin.getName()) ? PluginI18n.text("plugin.common.unnamedPlugin") : plugin.getName();
     }
 
     private static String capabilityDisplayLabel(String capabilityKey, String fallbackName, PluginCapability capability) {
@@ -210,7 +215,7 @@ final class RuntimeApiResponses {
         if (!isBlank(fallbackName)) {
             return fallbackName;
         }
-        return isBlank(capabilityKey) ? "未命名任务" : capabilityKey;
+        return isBlank(capabilityKey) ? PluginI18n.text("plugin.common.unnamedTask") : capabilityKey;
     }
 
     private static String capabilityMapKey(String pluginId, String capabilityKey) {
@@ -219,7 +224,7 @@ final class RuntimeApiResponses {
 
     private static String systemAutomationTargetLabel(String id, String pluginId, String capabilityKey) {
         if (RuntimeSystemAutomations.isRuntimeMaintenanceIdentity(id, pluginId, capabilityKey)) {
-            return RuntimeSystemAutomations.runtimeMaintenanceTargetLabel();
+            return PluginI18n.text("plugin.scheduler.maintenanceTarget");
         }
         return null;
     }
@@ -230,7 +235,7 @@ final class RuntimeApiResponses {
 
     private static String runtimePluginDisplayName(String pluginId, Plugin plugin, PluginCapability capability) {
         if (RuntimeSystemAutomations.isSystemPluginId(pluginId)) {
-            return RuntimeSystemAutomations.systemPluginName();
+            return PluginI18n.text("plugin.common.system");
         }
         if (plugin != null && !isBlank(plugin.getName())) {
             return plugin.getName();
