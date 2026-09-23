@@ -2557,10 +2557,10 @@
   resolved "https://registry.npmmirror.com/@types/range-parser/-/range-parser-1.2.5.tgz#38bd1733ae299620771bd414837ade2e57757498"
   integrity sha512-xrO9OoVPqFuYyR/loIHjnbvvyRZREYKLjxV4+dY6v3FQR3stQ9ZxIGkaclF7YhI9hfjpuTbu14hZEy94qKLtOA==
 
-"@types/react-async-script@1.2.1":
-  version "1.2.1"
-  resolved "https://registry.npmmirror.com/@types/react-async-script/-/react-async-script-1.2.1.tgz#165648718fa069a794e672b2300ae6276e2fd080"
-  integrity sha512-HMzTCi3WMLVSmyY2dTiWPLVYF4nWJieRr6auuTaV5fI2j6ezXDGhkErlHZXCEjnpUNU6Oxsfje+8OAUYX7Brag==
+"@types/react-async-script@1.2.5":
+  version "1.2.5"
+  resolved "https://registry.yarnpkg.com/@types/react-async-script/-/react-async-script-1.2.5.tgz#31f1870a53ebae2f9c1aa8dab2835fa749be524c"
+  integrity sha512-AB1xqhSJjlebv5OpUT5SkxdtWmcsUB2dqj6hRYpsBHfOd6OVtrxRgNE4C6JrzsWLEfCpbzLDqho/sIxN0YmcLg==
   dependencies:
     "@types/hoist-non-react-statics" "^3.3.1"
     "@types/react" "*"
