@@ -503,6 +503,11 @@ public class ServerActionHandler implements IActionHandler {
             if (msgPacket.getStatus() == MsgPacketStatus.SEND_REQUEST) {
                 try {
                     BaseHttpRequestInfo httpRequestInfo = new Gson().fromJson(msgPacket.getDataStr(), BaseHttpRequestInfo.class);
+                    if (RunConstants.runType == RunType.BLOG) {
+                        com.zrlog.plugincore.server.util.PluginInternalRequestAuth.authorize(httpRequestInfo,
+                                PluginRuntimeBridge.hostConnection().getBlogApiHomeUrl(),
+                                PluginRuntimeBridge.hostConnection().getBlogPluginToken());
+                    }
                     HttpResponseInfo httpResponseInfo = HttpUtils.doRequest(httpRequestInfo);
                     session.sendJsonMsg(httpResponseInfo, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
                 } catch (Exception e) {
