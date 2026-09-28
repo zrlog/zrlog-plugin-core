@@ -41,7 +41,7 @@ jobs:
           bash -e bin/package-native-github.sh /tmp/download/plugin/core
       - name: Process Linux binary
         if: runner.os == 'Linux'
-        uses: 94fzb/zrlog/.github/actions/process-artifact@11868b0b0f606f19367e69f839cddff3abf1747e
+        uses: 94fzb/zrlog/.github/actions/process-artifact@772e49ec9d2fd780adc97b9d20b1b61698efc87b
         with:
           artifact-file: ${{ steps.package.outputs.artifact_file }}
           artifact-name: ${{ steps.package.outputs.artifact_name }}
