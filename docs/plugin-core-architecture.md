@@ -305,3 +305,11 @@ Lambda 可能同时冻结 core 和插件进程，不能仅凭冻结期间经过�
 
 插件实现端
 : 插件实现依赖 `zrlog-plugin-common`，通过插件侧注解声明 service/capability，使用 `NioClient` / `IOSession` 连接回 core，并处理 `CAPABILITY_INVOKE` 等 Socket action。
+
+## 管理界面共享主题
+
+plugin-core 前端固定依赖 `@zrlog/ui@0.1.2`，通过 `useUiTheme` / `ThemeStyles` 复用九套主题、主色、明暗与密度；页面容器读取当前主题 token。当前没有 `@zrlog/utils` 的实际调用点，不引入该依赖。
+
+外观继续走已有服务端请求头链路，不增加浏览器通信：后台鉴权后解析管理员个人偏好，缺失字段继承站点默认，由 base 代理生成 `Admin-Theme`、`Dark-Mode`、`Admin-Color-Primary`、`Admin-Compact-Mode`。plugin-core 的 `AdminTheme` 忽略头名称大小写，缺失值从站点设置回退，随后将 `theme`、`dark`、`primaryColor`、`compactMode` 写入插件页面初始化数据及 `/api/plugins` 响应。新字段也保留在转发给业务插件的请求头中，插件可按需使用。
+
+未设置主题时使用 `default`，缺失密度时为普通密度；未知主题由共享 UI 包回退默认主题。没有新增用户偏好持久化或鉴权协议。`PluginListResponse` 新字段随现有 Native warmup 序列化覆盖；base 的 `PluginAdminAppearance` 仅在单次请求内直接调用，不经 Gson。部署时需同步更新 base、admin-web 与 plugin-core。

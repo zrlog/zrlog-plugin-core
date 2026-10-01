@@ -11,6 +11,11 @@ import com.zrlog.plugincore.server.runtime.event.RuntimeEventRequest;
 import com.zrlog.plugincore.server.runtime.event.RuntimeEventRuntime;
 import com.zrlog.plugincore.server.runtime.invocation.CapabilityInvocationLog;
 import org.junit.Test;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.hibegin.http.server.api.HttpRequest;
+import java.lang.reflect.Proxy;
+import java.util.Map;
 
 import java.util.Arrays;
 import java.util.List;
@@ -19,6 +24,27 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class PluginApiControllerTest {
+
+    @Test
+    public void shouldIncludeHostAppearanceInPluginPageAndApiData() {
+        Map<String, String> headers = Map.of("Dark-Mode", "true", "Admin-Color-Primary", "#00875a",
+                "Admin-Theme", "geek", "Admin-Compact-Mode", "true");
+        HttpRequest request = (HttpRequest) Proxy.newProxyInstance(HttpRequest.class.getClassLoader(),
+                new Class[]{HttpRequest.class}, (proxy, method, args) ->
+                        "getHeaderMap".equals(method.getName()) ? headers : null);
+        RunType previous = RunConstants.runType;
+        try {
+            RunConstants.runType = RunType.AGENT;
+            PluginApiModels.PluginListResponse response = new PluginApiController(request, null).plugins();
+            JsonObject json = new Gson().toJsonTree(response).getAsJsonObject();
+            assertEquals("geek", json.get("theme").getAsString());
+            assertEquals("#00875a", json.get("primaryColor").getAsString());
+            assertTrue(json.get("dark").getAsBoolean());
+            assertTrue(json.get("compactMode").getAsBoolean());
+        } finally {
+            RunConstants.runType = previous;
+        }
+    }
 
     @Test
     public void shouldReportStartedWhenRuntimeIsOnDemand() {

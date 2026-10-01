@@ -4,16 +4,13 @@ import * as serviceWorker from './serviceWorker';
 import zh_CN from "antd/es/locale/zh_CN";
 import en_US from "antd/es/locale/en_US";
 import {getRes, normalizeLang, setLanguage} from "./i18n/plugin";
-import {legacyLogicalPropertiesTransformer, StyleProvider} from "@ant-design/cssinjs";
 import {useCallback, useEffect, useState} from "react";
-import {App, ConfigProvider, Layout, theme} from "antd";
+import {DEFAULT_PRIMARY_COLOR} from "@zrlog/ui/themes";
 import {BrowserRouter} from "react-router-dom";
 import AppBase from "./AppBase";
 import axios from "axios";
 import {apiPath} from "./api";
-
-const {darkAlgorithm, defaultAlgorithm} = theme;
-const {Content} = Layout;
+import {PluginThemeProvider} from "./theme/PluginThemeProvider";
 
 export interface PluginCoreInfoResponse {
     lang?: string
@@ -22,6 +19,8 @@ export interface PluginCoreInfoResponse {
     pluginVersion: string
     pluginCenter: string
     dark: boolean
+    theme?: string
+    compactMode?: boolean
     primaryColor: string
     pluginMetadataReady?: boolean
     pluginMetadataLoading?: boolean
@@ -96,6 +95,12 @@ const loadFromDocument = () => {
 
 const Index = () => {
     const [pluginInfo, setPluginInfo] = useState<PluginCoreInfoResponse | null>(loadFromDocument);
+    const appearance = {
+        theme: pluginInfo?.theme || "default",
+        dark: pluginInfo?.dark ?? false,
+        colorPrimary: pluginInfo?.primaryColor || DEFAULT_PRIMARY_COLOR,
+        compactMode: pluginInfo?.compactMode ?? false,
+    };
 
     const reloadPluginInfo = useCallback(async () => {
         const {data} = await axios.get(apiPath("/plugins"));
@@ -121,36 +126,14 @@ const Index = () => {
     }
 
     return (
-        <ConfigProvider
+        <PluginThemeProvider
+            appearance={appearance}
             locale={normalizeLang(pluginInfo.lang) === "en_US" ? en_US : zh_CN}
-            theme={{
-                algorithm: pluginInfo.dark ? darkAlgorithm : defaultAlgorithm,
-                token: {
-                    colorPrimary: pluginInfo.primaryColor
-                }
-            }}
-            divider={{
-                style: {
-                    margin: "16px 0px"
-                }
-            }}
-            table={
-                {
-                    style: {
-                        whiteSpace: "nowrap"
-                    },
-                }}
         >
             <BrowserRouter>
-                <StyleProvider transformers={[legacyLogicalPropertiesTransformer]}>
-                    <Content style={{minHeight: "100vh", backgroundColor: pluginInfo.dark ? "#141414" : undefined, color: pluginInfo.dark ? "#dfdfdf" : undefined}}>
-                        <App>
-                            <AppBase pluginInfo={pluginInfo} onPluginInfoRefresh={reloadPluginInfo}/>
-                        </App>
-                    </Content>
-                </StyleProvider>
+                <AppBase pluginInfo={pluginInfo} onPluginInfoRefresh={reloadPluginInfo}/>
             </BrowserRouter>
-        </ConfigProvider>
+        </PluginThemeProvider>
     );
 };
 

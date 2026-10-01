@@ -61,6 +61,8 @@ public final class PluginApiModels {
         private Boolean pluginMetadataLoading;
         private Boolean dark;
         private String primaryColor;
+        private String theme;
+        private Boolean compactMode;
         private String pluginVersion;
         private String pluginBuildId;
         private String pluginBuildNumber;
@@ -121,6 +123,22 @@ public final class PluginApiModels {
 
         public void setPrimaryColor(String primaryColor) {
             this.primaryColor = primaryColor;
+        }
+
+        public String getTheme() {
+            return theme;
+        }
+
+        public void setTheme(String theme) {
+            this.theme = theme;
+        }
+
+        public Boolean getCompactMode() {
+            return compactMode;
+        }
+
+        public void setCompactMode(Boolean compactMode) {
+            this.compactMode = compactMode;
         }
 
         public String getPluginVersion() {

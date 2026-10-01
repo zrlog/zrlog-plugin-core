@@ -77,6 +77,8 @@ public class PluginApiController extends Controller {
         response.setPluginMetadataLoading(pluginBootstrap().isBootstrapRunning());
         response.setDark(adminTheme.isDarkMode());
         response.setPrimaryColor(adminTheme.getAdminColorPrimary());
+        response.setTheme(adminTheme.getTheme());
+        response.setCompactMode(adminTheme.isCompactMode());
         response.setPluginVersion(String.valueOf(ConfigKit.get("version", "")));
         response.setPluginBuildId(String.valueOf(ConfigKit.get("buildId", "")));
         response.setPluginBuildNumber(String.valueOf(ConfigKit.get("buildNumber", "")));

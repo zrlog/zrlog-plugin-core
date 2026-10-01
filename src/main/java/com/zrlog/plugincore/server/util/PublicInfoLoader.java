@@ -19,6 +19,14 @@ public class PublicInfoLoader {
     private PublicInfoLoader() {
     }
 
+    public static AdminTheme loadAdminTheme() throws SQLException {
+        Map<String, Object> values = new WebSiteDAO().getWebSiteByNameIn(Arrays.asList(
+                "admin_darkMode", "admin_color_primary", "admin_theme", "admin_compactMode"));
+        return new AdminTheme(Boolean.TRUE.equals(ResultValueConvertUtils.toBoolean(values.get("admin_darkMode"))),
+                (String) values.get("admin_color_primary"), (String) values.get("admin_theme"),
+                Boolean.TRUE.equals(ResultValueConvertUtils.toBoolean(values.get("admin_compactMode"))));
+    }
+
     public static PublicInfo loadPublicInfo() throws SQLException {
         Map<String, Object> response = new WebSiteDAO().getWebSiteByNameIn(Arrays.asList(PUBLIC_INFO_KEYS));
         PublicInfo publicInfo = new PublicInfo();

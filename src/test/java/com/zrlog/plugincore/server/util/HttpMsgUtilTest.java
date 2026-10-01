@@ -49,6 +49,8 @@ public class HttpMsgUtilTest {
         Map<String, String> headers = new HashMap<>();
         headers.put(AdminTheme.DARK_MODE_HEADER, "false");
         headers.put(AdminTheme.ADMIN_COLOR_PRIMARY_HEADER, "#1677ff");
+        headers.put(AdminTheme.ADMIN_THEME_HEADER, "desk");
+        headers.put(AdminTheme.ADMIN_COMPACT_MODE_HEADER, "true");
         HttpRequest request = (HttpRequest) Proxy.newProxyInstance(
                 HttpRequest.class.getClassLoader(),
                 new Class[]{HttpRequest.class},
@@ -75,5 +77,7 @@ public class HttpMsgUtilTest {
 
         assertEquals(1, bodyReads.get());
         assertSame(body, requestInfo.getRequestBody());
+        assertEquals("desk", requestInfo.getHeader().get(AdminTheme.ADMIN_THEME_HEADER));
+        assertEquals("true", requestInfo.getHeader().get(AdminTheme.ADMIN_COMPACT_MODE_HEADER));
     }
 }

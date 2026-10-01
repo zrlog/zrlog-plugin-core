@@ -345,6 +345,8 @@ final class NativeRuntimeWarmup {
         pluginListResponse.setPluginMetadataLoading(false);
         pluginListResponse.setDark(false);
         pluginListResponse.setPrimaryColor("#1677ff");
+        pluginListResponse.setTheme("default");
+        pluginListResponse.setCompactMode(false);
         pluginListResponse.setPluginVersion("native");
         pluginListResponse.setPluginBuildId("native-build");
         pluginListResponse.setPluginBuildNumber("1");
