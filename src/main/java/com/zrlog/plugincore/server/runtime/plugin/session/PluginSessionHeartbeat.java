@@ -113,11 +113,8 @@ final class PluginSessionHeartbeat {
             if (shutdown.get()) {
                 return false;
             }
-            if (!hasRecentHeartbeat(session, nowMs)) {
-                return false;
-            }
             if (!enabled) {
-                return true;
+                return hasRecentHeartbeat(session, nowMs);
             }
             if (hasFreshHeartbeat(session, nowMs)) {
                 return true;
@@ -127,6 +124,8 @@ final class PluginSessionHeartbeat {
                 if (hasFreshHeartbeat(session, now)) {
                     return true;
                 }
+                // Lambda can suspend the core and every plugin between requests. An old
+                // timestamp is not proof of a dead socket; probe before restarting it.
                 return pingAndWait(session, now);
             }
         }
@@ -156,7 +155,9 @@ final class PluginSessionHeartbeat {
                     return;
                 }
                 if (!hasRecentHeartbeat(session, nowMs)) {
-                    closeStaleSession(session);
+                    if (!ensureRecentHeartbeat(session, nowMs)) {
+                        closeStaleSession(session);
+                    }
                     return;
                 }
                 if (!shouldSendPing(session, nowMs)) {
@@ -193,7 +194,7 @@ final class PluginSessionHeartbeat {
 
     private boolean pingAndWait(IOSession session, long nowMs) {
         if (!PluginVersionUtils.isUpper(session.getPlugin(), PluginVersion.V4)) {
-            return true;
+            return hasRecentHeartbeat(session, nowMs);
         }
         int msgId = sendPing(session, nowMs, false);
         try (ResponseLease responseLease = session.getResponseLeaseByMsgId(msgId,

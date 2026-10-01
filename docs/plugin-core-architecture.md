@@ -286,6 +286,11 @@ flowchart LR
 `com.zrlog.plugincore.server.runtime.plugin.session`
 : 内存会话注册表，以及兼容现有查询调用的门面。
 
+本地 V4 插件的心跳过期后，请求线程和后台扫描都先通过现有 Socket 探测，再决定是否关闭会话。
+Lambda 可能同时冻结 core 和插件进程，不能仅凭冻结期间经过的墙钟时间判定插件失联，否则恢复后的首页请求会触发不必要的插件重启。
+探测仍使用 3 秒超时；同一会话的并发探测复用新取得的心跳结果。不支持该心跳协议的旧版插件保留原过期规则。
+这与数据库里的运行实例租约是两层机制，不改变远端实例的租约清理规则。
+
 `com.zrlog.plugincore.server.runtime.plugin.process`
 : 本地插件进程启动器、进程输出、退出监听、进程 ID 和运行态实例 ID。
 
