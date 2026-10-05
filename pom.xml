@@ -22,13 +22,6 @@
 
     <repositories>
         <repository>
-            <id>central-snapshots</id>
-            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
-            <snapshots>
-                <enabled>true</enabled>
-            </snapshots>
-        </repository>
-        <repository>
             <id>central-center</id>
             <url>https://repo1.maven.org/maven2/</url>
             <releases>
@@ -41,7 +34,7 @@
         <dependency>
             <groupId>com.hibegin</groupId>
             <artifactId>zrlog-plugin-common</artifactId>
-            <version>4.0.5-SNAPSHOT</version>
+            <version>4.0.5</version>
         </dependency>
         <dependency>
             <groupId>com.hibegin</groupId>
@@ -57,7 +50,7 @@
         <dependency>
             <groupId>com.hibegin</groupId>
             <artifactId>common-dao</artifactId>
-            <version>1.1.10-SNAPSHOT</version>
+            <version>1.1.11</version>
         </dependency>
         <dependency>
             <groupId>org.jsoup</groupId>
@@ -93,6 +86,28 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>release-versions</id>
+                        <phase>validate</phase>
+                        <goals><goal>enforce</goal></goals>
+                        <configuration>
+                            <rules>
+                                <requireReleaseVersion/>
+                                <requireReleaseDeps>
+                                    <onlyWhenRelease>false</onlyWhenRelease>
+                                    <searchTransitive>true</searchTransitive>
+                                    <failWhenParentIsSnapshot>true</failWhenParentIsSnapshot>
+                                </requireReleaseDeps>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
