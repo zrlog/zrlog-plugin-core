@@ -239,16 +239,33 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
   ];
 
   return (
-    <div style={{ padding: screens.md ? token.paddingLG : token.paddingSM }}>
+    <div className="plugin-list-page">
+      {/* Resolve the header layout before paint, without a breakpoint state update. */}
+      <style>{`
+        .plugin-list-page {
+          padding: ${token.paddingSM}px;
+        }
+        .plugin-list-page .plugin-list-search {
+          width: 100%;
+        }
+        @media (min-width: ${token.screenMD}px) {
+          .plugin-list-page {
+            padding: ${token.paddingLG}px;
+          }
+          .plugin-list-page .plugin-list-search {
+            width: 280px;
+          }
+        }
+      `}</style>
       {contextHolder}
-      <Space
-        direction="vertical"
-        size="large"
+      <div
         style={{
           width: "100%",
           maxWidth: 1440,
           margin: "0 auto",
           display: "flex",
+          flexDirection: "column",
+          gap: token.paddingLG,
         }}
       >
         <div
@@ -288,13 +305,13 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
           }}
         >
           <Input
+            className="plugin-list-search"
             allowClear
             prefix={<SearchOutlined />}
             placeholder={getRes().plugins.searchPlaceholder}
             aria-label={getRes().plugins.searchLabel}
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
-            style={{ width: screens.md ? 280 : "100%" }}
           />
           <Select
             value={filter}
@@ -457,7 +474,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
           </Typography.Text>
           <Typography.Text type="secondary">{getRes().plugins.systemTip}</Typography.Text>
         </div>
-      </Space>
+      </div>
     </div>
   );
 };
