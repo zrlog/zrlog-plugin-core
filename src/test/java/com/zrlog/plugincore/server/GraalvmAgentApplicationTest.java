@@ -58,6 +58,8 @@ public class GraalvmAgentApplicationTest {
         assertTrue(classes.contains(ServiceProviderSetting.class));
         assertTrue(classes.contains(PluginRuntimeState.class));
         assertTrue(classes.contains(RuntimeApiModels.Response.class));
+        assertTrue(classes.contains(com.zrlog.plugincore.server.web.controller.PluginApiModels.UploadResponse.class));
+        assertTrue(classes.contains(com.zrlog.plugincore.server.web.controller.PluginApiModels.UploadData.class));
         assertTrue(classes.contains(RuntimeApiModels.ItemsResponse.class));
         assertTrue(classes.contains(RuntimeApiModels.PageResponse.class));
         assertTrue(classes.contains(RuntimeApiModels.ItemResponse.class));

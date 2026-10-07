@@ -171,7 +171,8 @@ public class PluginController extends Controller {
         return PluginRuntimeBridge.pluginBootstrap();
     }
 
-    public void upload() {
-        response.renderJson(new PluginApiModels.EmptyResponse());
+    @com.hibegin.http.annotation.RequestMethod(method = com.hibegin.http.HttpMethod.POST)
+    public void upload() throws IOException {
+        response.renderJson(new PluginApiController(request, response).upload());
     }
 }

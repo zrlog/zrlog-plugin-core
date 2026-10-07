@@ -33,7 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class PluginHttpServerConfig extends AbstractServerConfig {
 
-    static final int MAX_REQUEST_BODY_SIZE = 4 * 1024 * 1024;
+    // Multipart framing has a separate allowance; uploaded artifacts are capped by PluginUploadService.
+    static final int MAX_REQUEST_BODY_SIZE =
+            com.zrlog.plugincore.server.runtime.plugin.artifact.PluginUploadService.MAX_FILE_SIZE + 1024 * 1024;
     static final int REQUEST_THREADS = 4;
     static final int REQUEST_QUEUE_CAPACITY = 16;
     static final int DECODE_THREADS = 2;

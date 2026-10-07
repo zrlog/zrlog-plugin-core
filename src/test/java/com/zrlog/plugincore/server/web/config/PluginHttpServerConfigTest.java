@@ -227,6 +227,8 @@ public class PluginHttpServerConfigTest {
     }
 
     private void assertRuntimeApis(Router router, String prefix) {
+        assertRoute(router, prefix + "/upload", HttpMethod.POST);
+        assertMissing(router, prefix + "/upload", HttpMethod.GET);
         assertRoute(router, prefix + "/runtime-scheduler/settings", HttpMethod.GET);
         assertRoute(router, prefix + "/runtime-scheduler/settings", HttpMethod.POST);
         assertRoute(router, prefix + "/runtime-scheduler/tick", HttpMethod.POST);

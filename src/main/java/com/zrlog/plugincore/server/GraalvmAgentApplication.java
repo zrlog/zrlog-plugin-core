@@ -129,6 +129,8 @@ public class GraalvmAgentApplication {
                 RuntimeApiModels.CommentProviderRow.class,
                 PluginApiModels.EmptyResponse.class,
                 PluginApiModels.ActionResponse.class,
+                PluginApiModels.UploadResponse.class,
+                PluginApiModels.UploadData.class,
                 PluginApiModels.PluginListResponse.class,
                 PluginApiModels.RefreshCacheResponse.class,
                 PluginApiModels.StatusResponse.class,

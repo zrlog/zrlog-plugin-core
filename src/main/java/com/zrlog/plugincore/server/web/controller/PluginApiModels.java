@@ -14,6 +14,46 @@ public final class PluginApiModels {
     public static class EmptyResponse {
     }
 
+    public static class UploadResponse {
+        private int error;
+        private String message;
+        private UploadData data;
+
+        public static UploadResponse success(String shortName, String fileName, boolean overwritten, String message) {
+            UploadResponse response = new UploadResponse();
+            response.message = message;
+            response.data = new UploadData(shortName, fileName, overwritten);
+            return response;
+        }
+
+        public static UploadResponse error(String message) {
+            UploadResponse response = new UploadResponse();
+            response.error = 1;
+            response.message = message;
+            return response;
+        }
+
+        public int getError() { return error; }
+        public String getMessage() { return message; }
+        public UploadData getData() { return data; }
+    }
+
+    public static class UploadData {
+        private String shortName;
+        private String fileName;
+        private boolean overwritten;
+
+        public UploadData(String shortName, String fileName, boolean overwritten) {
+            this.shortName = shortName;
+            this.fileName = fileName;
+            this.overwritten = overwritten;
+        }
+
+        public String getShortName() { return shortName; }
+        public String getFileName() { return fileName; }
+        public boolean isOverwritten() { return overwritten; }
+    }
+
     public static class ActionResponse {
 
         private Integer code;

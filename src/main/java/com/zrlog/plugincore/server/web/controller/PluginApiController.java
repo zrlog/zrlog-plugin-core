@@ -3,6 +3,9 @@ package com.zrlog.plugincore.server.web.controller;
 import com.zrlog.plugincore.server.util.PluginI18n;
 
 import com.hibegin.http.annotation.ResponseBody;
+import com.hibegin.http.annotation.RequestMethod;
+import com.hibegin.http.HttpMethod;
+import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginUploadService;
 import com.hibegin.http.server.api.HttpRequest;
 import com.hibegin.http.server.api.HttpResponse;
 import com.hibegin.http.server.web.Controller;
@@ -61,6 +64,13 @@ public class PluginApiController extends Controller {
 
     private IOSession getSession() {
         return PluginSessions.getLocalSessionByPluginShortName(getRequest().getParaToStr("name"));
+    }
+
+    @ResponseBody
+    @RequestMethod(method = HttpMethod.POST)
+    public PluginApiModels.UploadResponse upload() throws IOException {
+        return new PluginUploadService().upload(request.getParaToStr("fileName"),
+                Boolean.parseBoolean(request.getParaToStr("overwrite", "false")), request.getFile("file"));
     }
 
     @ResponseBody
