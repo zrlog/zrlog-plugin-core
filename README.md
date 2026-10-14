@@ -31,7 +31,7 @@ zrlogctl plugin upload travel-Linux-amd64.bin --overwrite
 
 ## 构建
 
-公共协议固定依赖 `zrlog-plugin-common:4.0.5`，数据库工具固定依赖 `common-dao:1.1.11`。先确认公共库正式制品已发布到 Maven Central，再合入依赖升级并发布运行时。构建在 `validate` 阶段拒绝项目、父 POM 及直接、传递依赖中的 SNAPSHOT。
+公共协议固定依赖 `zrlog-plugin-common:4.0.5`，数据库工具固定依赖 `common-dao:1.1.12`。先确认公共库正式制品已发布到 Maven Central，再合入依赖升级并发布运行时。构建在 `validate` 阶段拒绝项目、父 POM 及直接、传递依赖中的 SNAPSHOT。
 
 ```shell
 export JAVA_HOME=${HOME}/dev/graalvm-jdk-latest
