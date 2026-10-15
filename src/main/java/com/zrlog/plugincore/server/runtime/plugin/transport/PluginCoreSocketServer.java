@@ -307,11 +307,13 @@ public class PluginCoreSocketServer implements ISocketServer {
         try {
             decode.doDecode(session);
         } catch (Exception e) {
-            closeSession(session, key);
-            if (isSocketSessionClosed(e)) {
-                LOGGER.info("plugin session closed");
-            } else {
-                LOGGER.log(Level.SEVERE, "dispose error " + e.getMessage());
+            try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
+                closeSession(session, key);
+                if (isSocketSessionClosed(e)) {
+                    LOGGER.info(PluginLogContext.prefix("plugin session closed"));
+                } else {
+                    LOGGER.log(Level.SEVERE, PluginLogContext.prefix("dispose error " + e.getMessage()));
+                }
             }
         } finally {
             if (EnvKit.isDevMode()) {
