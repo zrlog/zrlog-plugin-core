@@ -62,8 +62,6 @@ public class PluginCoreSocketServer implements ISocketServer {
     private final ExecutorService executor;
     private final ExecutorService controlExecutor;
     private final ServiceInvocationDispatcher serviceInvocationDispatcher = new ServiceInvocationDispatcher();
-    private final HostCacheRefreshDispatcher hostCacheRefreshDispatcher =
-            new HostCacheRefreshDispatcher(ServerActionHandler::doRefreshCache);
     private final PluginConfig pluginConfig;
     private final PluginBootstrapService pluginBootstrap;
     private final SocketPacketMemoryBudget packetMemoryBudget;
@@ -279,7 +277,7 @@ public class PluginCoreSocketServer implements ISocketServer {
                 IOSession createdSession = new IOSession(channel, selector,
                         new SocketCodec(new SocketEncode(),
                                 new SocketDecode(executor, controlExecutor, packetMemoryBudget)),
-                        new ServerActionHandler(serviceInvocationDispatcher, hostCacheRefreshDispatcher::request));
+                new ServerActionHandler(serviceInvocationDispatcher));
                 createdSession.addCloseListener(() -> onSessionClosed(createdSession));
                 session = createdSession;
                 decoderMap.put(socket, session);
@@ -365,11 +363,7 @@ public class PluginCoreSocketServer implements ISocketServer {
                     shutdownExecutor(controlExecutor);
                 }
             } finally {
-                try {
-                    serviceInvocationDispatcher.shutdown();
-                } finally {
-                    hostCacheRefreshDispatcher.close();
-                }
+                serviceInvocationDispatcher.shutdown();
             }
         }
     }
