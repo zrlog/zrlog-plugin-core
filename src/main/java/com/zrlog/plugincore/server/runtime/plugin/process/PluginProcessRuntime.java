@@ -1,8 +1,5 @@
 package com.zrlog.plugincore.server.runtime.plugin.process;
 
-import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
-import com.zrlog.plugincore.server.runtime.state.PluginStartDeferredException;
-
 import com.hibegin.common.util.EnvKit;
 import com.zrlog.plugin.common.ConfigKit;
 import com.zrlog.plugin.common.LoggerUtil;
@@ -16,6 +13,8 @@ import com.zrlog.plugincore.server.runtime.plugin.log.PluginLogContext;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.DefaultPluginRuntimeStarter;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService;
+import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
+import com.zrlog.plugincore.server.runtime.state.PluginStartDeferredException;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStates;
@@ -360,7 +359,7 @@ public class PluginProcessRuntime {
     }
 
     private ProcessSlot startProcess(String pluginId, String pluginShortName,
-                                                   LaunchCommand launchCommand) {
+                                     LaunchCommand launchCommand) {
         if (StringUtils.isEmpty(pluginId)) {
             throw new IllegalArgumentException("pluginId is required");
         }
