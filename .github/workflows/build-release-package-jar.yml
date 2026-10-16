@@ -15,7 +15,7 @@ jobs:
         os: [ubuntu-latest]
         architecture: [ amd64 ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Cache node modules admin
