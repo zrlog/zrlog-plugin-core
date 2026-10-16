@@ -2,7 +2,7 @@ package com.zrlog.plugincore.server.runtime.plugin.transport;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong;
 final class ServiceInvocationDispatcher {
 
     static final int WORKER_THREADS = 2;
-    static final int QUEUE_CAPACITY = 8;
+    static final int TASK_BYTES = 1024;
     static final long MAX_PENDING_BYTES = 32L * 1024L * 1024L;
 
     private final ExecutorService executor;
@@ -32,7 +32,7 @@ final class ServiceInvocationDispatcher {
 
     boolean dispatch(int payloadBytes, Runnable action) {
         Objects.requireNonNull(action, "action");
-        int reservedBytes = Math.max(1, payloadBytes);
+        long reservedBytes = Math.max(0L, payloadBytes) + TASK_BYTES;
         if (closed.get() || !pendingByteBudget.tryReserve(reservedBytes)) {
             return false;
         }
@@ -77,14 +77,14 @@ final class ServiceInvocationDispatcher {
         return task instanceof InvocationTask && ((InvocationTask) task).cancelIfQueued();
     }
 
-    private static ThreadPoolExecutor newExecutor() {
+    static ThreadPoolExecutor newExecutor() {
         AtomicInteger threadIndex = new AtomicInteger();
         return new ThreadPoolExecutor(
                 WORKER_THREADS,
                 WORKER_THREADS,
                 0L,
                 TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(QUEUE_CAPACITY),
+                new LinkedBlockingQueue<>(),
                 runnable -> new Thread(runnable, "zrlog-plugin-service-start-" + threadIndex.incrementAndGet()),
                 new ThreadPoolExecutor.AbortPolicy()
         );
@@ -94,11 +94,11 @@ final class ServiceInvocationDispatcher {
 
         private final Runnable action;
         private final PendingByteBudget pendingByteBudget;
-        private final int reservedBytes;
+        private final long reservedBytes;
         private final AtomicBoolean claimed = new AtomicBoolean(false);
         private final AtomicBoolean released = new AtomicBoolean(false);
 
-        private InvocationTask(Runnable action, PendingByteBudget pendingByteBudget, int reservedBytes) {
+        private InvocationTask(Runnable action, PendingByteBudget pendingByteBudget, long reservedBytes) {
             this.action = action;
             this.pendingByteBudget = pendingByteBudget;
             this.reservedBytes = reservedBytes;

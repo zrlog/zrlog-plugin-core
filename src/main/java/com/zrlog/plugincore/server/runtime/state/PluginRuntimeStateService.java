@@ -15,7 +15,6 @@ public class PluginRuntimeStateService {
 
     private static final long DEFAULT_START_WAIT_TIMEOUT_MS = 30000L;
     private static final long DEFAULT_START_WAIT_INTERVAL_MS = 100L;
-    private static final long DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS = 5000L;
     private static final long DEFAULT_DEMAND_CLAIM_MS = 30000L;
     private static final int INVOCATION_END_ATTEMPTS = 2;
     static final int MAX_ACTIVE_INVOCATION_IDS = 256;
@@ -95,8 +94,8 @@ public class PluginRuntimeStateService {
         boolean started = startCoordinator.start(
                 identity.getPluginId(),
                 starter.maxConcurrentStarts(),
-                Math.min(startWaitTimeoutMs, DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS),
-                startWaitTimeoutMs + Math.min(startWaitTimeoutMs, DEFAULT_START_CAPACITY_WAIT_TIMEOUT_MS),
+                startWaitTimeoutMs,
+                startWaitTimeoutMs + startWaitTimeoutMs,
                 starter.startFailureBackoffMs(),
                 () -> startAndAwait(identity)
         );

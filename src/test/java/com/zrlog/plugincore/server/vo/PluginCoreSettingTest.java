@@ -1,5 +1,6 @@
 package com.zrlog.plugincore.server.vo;
 
+import com.google.gson.Gson;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -36,9 +37,20 @@ public class PluginCoreSettingTest {
         assertEquals(Boolean.TRUE, setting.getRuntime().getIdleStopEnabled());
         assertEquals(Long.valueOf(300L), setting.getRuntime().getIdleTimeoutSeconds());
         assertEquals(Long.valueOf(300L), setting.getRuntime().getIdleScanIntervalSeconds());
-        assertEquals(Long.valueOf(4L), setting.getRuntime().getMaxRunningPlugins());
         assertEquals(Long.valueOf(2L), setting.getRuntime().getMaxConcurrentStarts());
         assertEquals(Long.valueOf(30L), setting.getRuntime().getStartFailureBackoffSeconds());
+    }
+
+    @Test
+    public void shouldIgnoreRetiredTotalPluginLimitInLegacySettings() {
+        Gson gson = new Gson();
+        PluginCoreSetting setting = gson.fromJson(
+                "{\"runtime\":{\"maxRunningPlugins\":1,\"maxConcurrentStarts\":3}}", PluginCoreSetting.class);
+
+        setting.getRuntime().normalize();
+
+        assertEquals(Long.valueOf(3L), setting.getRuntime().getMaxConcurrentStarts());
+        assertFalse(gson.toJson(setting).contains("maxRunningPlugins"));
     }
 
     @Test
@@ -47,13 +59,11 @@ public class PluginCoreSettingTest {
 
         setting.getRuntime().setIdleTimeoutSeconds(Long.MAX_VALUE);
         setting.getRuntime().setIdleScanIntervalSeconds(5L);
-        setting.getRuntime().setMaxRunningPlugins(Long.MAX_VALUE);
         setting.getRuntime().setMaxConcurrentStarts(0L);
         setting.getRuntime().setStartFailureBackoffSeconds(0L);
 
         assertEquals(Long.valueOf(86400L), setting.getRuntime().getIdleTimeoutSeconds());
         assertEquals(Long.valueOf(60L), setting.getRuntime().getIdleScanIntervalSeconds());
-        assertEquals(Long.valueOf(32L), setting.getRuntime().getMaxRunningPlugins());
         assertEquals(Long.valueOf(1L), setting.getRuntime().getMaxConcurrentStarts());
         assertEquals(Long.valueOf(1L), setting.getRuntime().getStartFailureBackoffSeconds());
 

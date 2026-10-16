@@ -311,14 +311,13 @@ public class SchedulerRuntimeTest {
         assertFalse(setting.getAutoDownloadMissingPluginFileEnabled());
         assertFalse(setting.getIdleStopEnabled());
         assertEquals(Long.valueOf(120L), setting.getIdleScanIntervalSeconds());
-        assertEquals(Long.valueOf(32L), setting.getMaxRunningPlugins());
         assertEquals(Long.valueOf(1L), setting.getMaxConcurrentStarts());
         assertEquals(Long.valueOf(1L), setting.getStartFailureBackoffSeconds());
         assertEquals(Boolean.FALSE, normalizedPayload.get("onDemandEnabled"));
         assertEquals(Boolean.FALSE, normalizedPayload.get("autoDownloadMissingPluginFileEnabled"));
         assertEquals(Boolean.FALSE, normalizedPayload.get("idleStopEnabled"));
         assertEquals(Long.valueOf(120L), normalizedPayload.get("idleScanIntervalSeconds"));
-        assertEquals(Long.valueOf(32L), normalizedPayload.get("maxRunningPlugins"));
+        assertFalse(normalizedPayload.containsKey("maxRunningPlugins"));
         assertEquals(Long.valueOf(1L), normalizedPayload.get("maxConcurrentStarts"));
         assertEquals(Long.valueOf(1L), normalizedPayload.get("startFailureBackoffSeconds"));
     }
