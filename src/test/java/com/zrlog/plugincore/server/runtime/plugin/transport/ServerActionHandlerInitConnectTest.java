@@ -4,6 +4,10 @@ import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.api.IActionHandler;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
+import com.zrlog.plugin.data.codec.ContentType;
+import com.zrlog.plugin.message.Plugin;
+import com.zrlog.plugincore.server.dao.WebSiteDAO;
+import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import com.zrlog.plugin.data.codec.SocketCodec;
 import com.zrlog.plugin.data.codec.SocketDecode;
 import com.zrlog.plugin.data.codec.SocketEncode;
@@ -20,6 +24,7 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -27,6 +32,50 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class ServerActionHandlerInitConnectTest {
+
+    @Test
+    public void shouldPersistPrivateSyncHistoryWithoutCallingHostRefreshAgain() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open();
+             RecordingSession session = new RecordingSession()) {
+            Plugin plugin = new Plugin();
+            plugin.setId("static-id");
+            plugin.setShortName("static-plus");
+            session.setPlugin(plugin);
+            AtomicInteger refreshes = new AtomicInteger();
+            MsgPacket packet = new MsgPacket(Collections.singletonMap("syncHistory", "[{\"success\":true}]"),
+                    ContentType.JSON, MsgPacketStatus.SEND_REQUEST, 81, "SET_WEBSITE");
+
+            new ServerActionHandler(null, refreshes::incrementAndGet).setWebSite(session, packet);
+
+            assertEquals("[{\"success\":true}]", new WebSiteDAO().queryValueByName("static-plus_syncHistory"));
+            assertEquals(MsgPacketStatus.RESPONSE_SUCCESS, session.status);
+            assertEquals(81, session.msgId);
+            assertEquals(0, refreshes.get());
+        }
+    }
+
+    @Test
+    public void shouldRequestHostRefreshForExplicitStaticTemplateSettings() throws Exception {
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open();
+             RecordingSession session = new RecordingSession()) {
+            Plugin plugin = new Plugin();
+            plugin.setId("static-id");
+            plugin.setShortName("static-plus");
+            session.setPlugin(plugin);
+            new WebSiteDAO().saveOrUpdateChanged("staticResourceHost", "https://old.example");
+            AtomicInteger refreshes = new AtomicInteger();
+            MsgPacket packet = new MsgPacket(Collections.singletonMap("syncTemplate", false),
+                    ContentType.JSON, MsgPacketStatus.SEND_REQUEST, 82, "SET_WEBSITE");
+
+            new ServerActionHandler(null, () -> {
+                assertEquals(MsgPacketStatus.RESPONSE_SUCCESS, session.status);
+                refreshes.incrementAndGet();
+            }).setWebSite(session, packet);
+
+            assertEquals("", new WebSiteDAO().queryValueByName("staticResourceHost"));
+            assertEquals(1, refreshes.get());
+        }
+    }
 
     @Test
     public void shouldRejectOversizedInitBeforeBindingSessionOrPersistingPlugin() throws Exception {
