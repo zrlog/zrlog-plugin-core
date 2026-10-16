@@ -33,7 +33,6 @@ type RuntimeMaintenancePayload = {
     idleStopEnabled: boolean;
     idleTimeoutSeconds: number;
     idleScanIntervalSeconds: number;
-    maxRunningPlugins: number;
     maxConcurrentStarts: number;
     startFailureBackoffSeconds: number;
 }
@@ -56,7 +55,6 @@ const defaultRuntimeMaintenancePayload: RuntimeMaintenancePayload = {
     idleStopEnabled: true,
     idleTimeoutSeconds: 300,
     idleScanIntervalSeconds: 300,
-    maxRunningPlugins: 4,
     maxConcurrentStarts: 2,
     startFailureBackoffSeconds: 30
 };
@@ -134,8 +132,6 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             idleTimeoutSeconds: parseNumberPayload(payload?.idleTimeoutSeconds,
                 defaultRuntimeMaintenancePayload.idleTimeoutSeconds, 10, 86400),
             idleScanIntervalSeconds: parseMaintenanceInterval(payload?.idleScanIntervalSeconds),
-            maxRunningPlugins: parseNumberPayload(payload?.maxRunningPlugins,
-                defaultRuntimeMaintenancePayload.maxRunningPlugins, 1, 32),
             maxConcurrentStarts: parseNumberPayload(payload?.maxConcurrentStarts,
                 defaultRuntimeMaintenancePayload.maxConcurrentStarts, 1, 8),
             startFailureBackoffSeconds: parseNumberPayload(payload?.startFailureBackoffSeconds,
@@ -230,7 +226,6 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             maintenanceIdleStopEnabled: defaultRuntimeMaintenancePayload.idleStopEnabled,
             maintenanceIdleTimeoutSeconds: defaultRuntimeMaintenancePayload.idleTimeoutSeconds,
             maintenanceIdleScanIntervalSeconds: defaultRuntimeMaintenancePayload.idleScanIntervalSeconds,
-            maintenanceMaxRunningPlugins: defaultRuntimeMaintenancePayload.maxRunningPlugins,
             maintenanceMaxConcurrentStarts: defaultRuntimeMaintenancePayload.maxConcurrentStarts,
             maintenanceStartFailureBackoffSeconds: defaultRuntimeMaintenancePayload.startFailureBackoffSeconds,
             payload: "{}"
@@ -251,7 +246,6 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             maintenanceIdleStopEnabled: maintenancePayload.idleStopEnabled,
             maintenanceIdleTimeoutSeconds: maintenancePayload.idleTimeoutSeconds,
             maintenanceIdleScanIntervalSeconds: maintenancePayload.idleScanIntervalSeconds,
-            maintenanceMaxRunningPlugins: maintenancePayload.maxRunningPlugins,
             maintenanceMaxConcurrentStarts: maintenancePayload.maxConcurrentStarts,
             maintenanceStartFailureBackoffSeconds: maintenancePayload.startFailureBackoffSeconds,
             payload: JSON.stringify(automation.payload || {}, null, 2)
@@ -271,7 +265,6 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
                 autoDownloadMissingPluginFileEnabled: values.maintenanceAutoDownloadMissingPluginFileEnabled !== false,
                 idleStopEnabled: onDemandEnabled && values.maintenanceIdleStopEnabled !== false,
                 idleTimeoutSeconds: Number(values.maintenanceIdleTimeoutSeconds || defaultRuntimeMaintenancePayload.idleTimeoutSeconds),
-                maxRunningPlugins: Number(values.maintenanceMaxRunningPlugins || defaultRuntimeMaintenancePayload.maxRunningPlugins),
                 maxConcurrentStarts: Number(values.maintenanceMaxConcurrentStarts || defaultRuntimeMaintenancePayload.maxConcurrentStarts),
                 startFailureBackoffSeconds: Number(values.maintenanceStartFailureBackoffSeconds
                     || defaultRuntimeMaintenancePayload.startFailureBackoffSeconds)
@@ -765,15 +758,6 @@ crons = ["*/5 * * * *"]`;
                                     rules={[{required: true, message: getRes().runtimeScheduler.intervalRequired}]}
                                 >
                                     <Select options={maintenanceIntervalOptions()} />
-                                </Form.Item>
-                            )}
-                            {showMaintenanceOnDemandSettings && (
-                                <Form.Item
-                                    label={getRes().runtimeScheduler.maxRunning}
-                                    name="maintenanceMaxRunningPlugins"
-                                    rules={[{required: true, message: getRes().runtimeScheduler.maxRunningRequired}]}
-                                >
-                                    <InputNumber min={1} max={32} precision={0} style={{width: "100%"}} />
                                 </Form.Item>
                             )}
                             <Form.Item

@@ -65,7 +65,7 @@ public class ServerActionHandler implements IActionHandler {
     }
 
     ServerActionHandler(ServiceInvocationDispatcher serviceInvocationDispatcher) {
-        this(serviceInvocationDispatcher, new HostCacheRefreshDispatcher(ServerActionHandler::doRefreshCache)::request);
+        this(serviceInvocationDispatcher, ServerActionHandler::doRefreshCache);
     }
 
     ServerActionHandler(ServiceInvocationDispatcher serviceInvocationDispatcher, Runnable hostCacheRefresh) {

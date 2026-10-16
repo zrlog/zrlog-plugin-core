@@ -262,7 +262,6 @@ public class RuntimeAutomationService {
         target.setIdleStopEnabled(source.getIdleStopEnabled());
         target.setIdleTimeoutSeconds(source.getIdleTimeoutSeconds());
         target.setIdleScanIntervalSeconds(source.getIdleScanIntervalSeconds());
-        target.setMaxRunningPlugins(source.getMaxRunningPlugins());
         target.setMaxConcurrentStarts(source.getMaxConcurrentStarts());
         target.setStartFailureBackoffSeconds(source.getStartFailureBackoffSeconds());
     }

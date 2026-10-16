@@ -53,7 +53,6 @@ public class ServiceMsgPacketHandler {
     private static final long COLD_RESOLUTION_TIMEOUT_MS = DEFAULT_START_WAIT_TIMEOUT_MS
             + START_CAPACITY_WAIT_TIMEOUT_MS
             + (SERVICE_SESSION_RETRY_COUNT - 1L) * SERVICE_SESSION_RETRY_INTERVAL_MS;
-    private static final String SERVICE_BUSY_MESSAGE = "Service invocation capacity reached";
 
     private final IOSession session;
     private final ServiceInvocationDispatcher serviceInvocationDispatcher;
@@ -222,7 +221,9 @@ public class ServiceMsgPacketHandler {
         boolean accepted = serviceInvocationDispatcher.dispatch(context.payloadBytes,
                 () -> continueColdInvocation(context));
         if (!accepted) {
-            sendServiceError(context.sourceSession, context.sourceMethod, context.sourceMsgId, SERVICE_BUSY_MESSAGE);
+            sendServiceError(context.sourceSession, context.sourceMethod, context.sourceMsgId,
+                    serviceInvocationDispatcher.isClosed() ? "Plugin runtime is shutting down"
+                            : "Service request memory budget exhausted");
         }
     }
 

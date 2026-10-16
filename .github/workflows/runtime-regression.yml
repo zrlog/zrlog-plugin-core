@@ -5,6 +5,7 @@ on:
     paths:
       - src/main/java/**
       - src/test/java/**
+      - src/main/frontend/**
       - pom.xml
       - .github/workflows/runtime-regression.yml
   workflow_dispatch:
@@ -26,6 +27,18 @@ jobs:
           distribution: temurin
           java-version: '11'
           cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.20.2'
+          cache: yarn
+          cache-dependency-path: src/main/frontend/yarn.lock
+      - name: Validate and build frontend
+        working-directory: src/main/frontend
+        run: |
+          yarn install --frozen-lockfile --non-interactive --network-timeout 60000
+          yarn type-check
+          CI=true yarn test --watchAll=false --runInBand
+          BUILD_PATH=../resources/static CI=false yarn build
       - name: Test and build engineering JAR
         run: |
           bash bin/build-info.sh
@@ -35,7 +48,7 @@ jobs:
           jar=pathlib.Path('target/plugin-core.jar')
           data={'source_commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
                 'sha256':hashlib.sha256(jar.read_bytes()).hexdigest(),'bytes':jar.stat().st_size,
-                'boundary':'Engineering JAR without rebuilding frontend; no deployment/publication.'}
+                'boundary':'Engineering JAR with frontend build; no deployment/publication.'}
           pathlib.Path('target/core-candidate.json').write_text(json.dumps(data,indent=2)+'\n')
           PY
       - uses: actions/upload-artifact@v6

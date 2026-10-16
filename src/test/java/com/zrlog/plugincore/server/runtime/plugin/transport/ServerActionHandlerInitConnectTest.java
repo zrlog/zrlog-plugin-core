@@ -1,12 +1,19 @@
 package com.zrlog.plugincore.server.runtime.plugin.transport;
 
+import com.sun.net.httpserver.HttpServer;
 import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.RunConstants;
 import com.zrlog.plugin.api.IActionHandler;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
 import com.zrlog.plugin.data.codec.ContentType;
 import com.zrlog.plugin.message.Plugin;
+import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.dao.WebSiteDAO;
+import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
+import com.zrlog.plugincore.server.runtime.PluginRuntimeServices;
+import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
+import com.zrlog.plugincore.server.runtime.plugin.config.PluginHostConnection;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import com.zrlog.plugin.data.codec.SocketCodec;
 import com.zrlog.plugin.data.codec.SocketDecode;
@@ -15,6 +22,7 @@ import org.junit.Test;
 
 import java.io.IOException;
 import java.lang.reflect.Proxy;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
 import java.net.SocketOption;
@@ -24,12 +32,19 @@ import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.Collections;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 public class ServerActionHandlerInitConnectTest {
 
@@ -74,6 +89,65 @@ public class ServerActionHandlerInitConnectTest {
 
             assertEquals("", new WebSiteDAO().queryValueByName("staticResourceHost"));
             assertEquals(1, refreshes.get());
+        }
+    }
+
+    @Test
+    public void shouldWaitForHostRefreshBeforeReturningFromDefaultHandler() throws Exception {
+        CountDownLatch refreshEntered = new CountDownLatch(1);
+        CountDownLatch releaseRefresh = new CountDownLatch(1);
+        HttpServer host = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        host.createContext("/api/admin/refreshCache", exchange -> {
+            refreshEntered.countDown();
+            try {
+                if (!releaseRefresh.await(10, TimeUnit.SECONDS)) {
+                    throw new IOException("test did not release host refresh");
+                }
+                exchange.sendResponseHeaders(200, -1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IOException(e);
+            } finally {
+                exchange.close();
+            }
+        });
+        ExecutorService requests = Executors.newSingleThreadExecutor();
+        RunType originalRunType = RunConstants.runType;
+        PluginRuntimeServices services = PluginRuntimeServices.create(PluginConfig.unconfigured(),
+                new PluginHostConnection("http://127.0.0.1:" + host.getAddress().getPort(), "", "", ""));
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open();
+             RecordingSession session = new RecordingSession()) {
+            host.start();
+            PluginRuntimeBridge.install(services);
+            RunConstants.runType = RunType.BLOG;
+            Plugin plugin = new Plugin();
+            plugin.setId("static-id");
+            plugin.setShortName("static-plus");
+            session.setPlugin(plugin);
+            MsgPacket packet = new MsgPacket(Collections.singletonMap("syncTemplate", false),
+                    ContentType.JSON, MsgPacketStatus.SEND_REQUEST, 83, "SET_WEBSITE");
+
+            Future<?> request = requests.submit(() -> new ServerActionHandler(null).setWebSite(session, packet));
+
+            assertTrue("host refresh was not called", refreshEntered.await(5, TimeUnit.SECONDS));
+            assertEquals(MsgPacketStatus.RESPONSE_SUCCESS, session.status);
+            assertEquals(83, session.msgId);
+            try {
+                request.get(200, TimeUnit.MILLISECONDS);
+                fail("SET_WEBSITE returned before its host refresh completed");
+            } catch (TimeoutException expected) {
+                // The plugin reply precedes the callback, but the callback stays on the request thread.
+            }
+            releaseRefresh.countDown();
+            request.get(5, TimeUnit.SECONDS);
+        } finally {
+            releaseRefresh.countDown();
+            requests.shutdownNow();
+            assertTrue(requests.awaitTermination(5, TimeUnit.SECONDS));
+            host.stop(0);
+            services.shutdown();
+            PluginRuntimeBridge.install(PluginRuntimeServices.unconfigured());
+            RunConstants.runType = originalRunType;
         }
     }
 

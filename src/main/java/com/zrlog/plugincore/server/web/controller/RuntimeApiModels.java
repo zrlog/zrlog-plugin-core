@@ -299,7 +299,6 @@ public final class RuntimeApiModels {
         private Boolean idleStopEnabled;
         private Long idleTimeoutSeconds;
         private Long idleScanIntervalSeconds;
-        private Long maxRunningPlugins;
         private Long maxConcurrentStarts;
         private Long startFailureBackoffSeconds;
 
@@ -314,7 +313,6 @@ public final class RuntimeApiModels {
             this.idleStopEnabled = setting.getIdleStopEnabled();
             this.idleTimeoutSeconds = setting.getIdleTimeoutSeconds();
             this.idleScanIntervalSeconds = setting.getIdleScanIntervalSeconds();
-            this.maxRunningPlugins = setting.getMaxRunningPlugins();
             this.maxConcurrentStarts = setting.getMaxConcurrentStarts();
             this.startFailureBackoffSeconds = setting.getStartFailureBackoffSeconds();
         }
@@ -357,14 +355,6 @@ public final class RuntimeApiModels {
 
         public void setIdleScanIntervalSeconds(Long idleScanIntervalSeconds) {
             this.idleScanIntervalSeconds = idleScanIntervalSeconds;
-        }
-
-        public Long getMaxRunningPlugins() {
-            return maxRunningPlugins;
-        }
-
-        public void setMaxRunningPlugins(Long maxRunningPlugins) {
-            this.maxRunningPlugins = maxRunningPlugins;
         }
 
         public Long getMaxConcurrentStarts() {

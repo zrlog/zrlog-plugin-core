@@ -41,8 +41,8 @@ public class PluginCoreDAOTest {
 
         assertEquals(1, dao.loadCalls);
         assertEquals(0, dao.casCalls);
-        assertEquals(PluginRuntimeSetting.DEFAULT_MAX_RUNNING_PLUGINS,
-                updated.getSetting().getRuntime().getMaxRunningPlugins().longValue());
+        assertEquals(PluginRuntimeSetting.DEFAULT_MAX_CONCURRENT_STARTS,
+                updated.getSetting().getRuntime().getMaxConcurrentStarts().longValue());
     }
 
     @Test
@@ -67,11 +67,11 @@ public class PluginCoreDAOTest {
         FakePluginCoreDAO dao = new FakePluginCoreDAO(raw);
 
         PluginCore updated = dao.update(pluginCore ->
-                pluginCore.getSetting().getRuntime().setMaxRunningPlugins(Long.MAX_VALUE));
+                pluginCore.getSetting().getRuntime().setMaxConcurrentStarts(Long.MAX_VALUE));
 
         assertEquals(1, dao.casCalls);
-        assertEquals(PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS,
-                updated.getSetting().getRuntime().getMaxRunningPlugins().longValue());
+        assertEquals(PluginRuntimeSetting.MAX_MAX_CONCURRENT_STARTS,
+                updated.getSetting().getRuntime().getMaxConcurrentStarts().longValue());
         assertEquals(gson.toJson(updated), dao.casValue);
     }
 
