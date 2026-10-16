@@ -27,7 +27,6 @@ public class PluginStartupCoordinatorTest {
         RecordingArtifactBootstrapper artifactBootstrapper = new RecordingArtifactBootstrapper(pluginFile);
         PluginStartupCoordinator coordinator = new PluginStartupCoordinator(null, artifactBootstrapper);
         PluginCore pluginCore = new PluginCore();
-        pluginCore.getSetting().getRuntime().setMaxRunningPlugins(1L);
         pluginCore.getSetting().getRuntime().setMaxConcurrentStarts(2L);
         Thread bootstrapThread = new Thread(() -> coordinator.startRunnablePlugins(pluginCore));
         try {

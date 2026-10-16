@@ -139,10 +139,6 @@ public final class RuntimeSystemAutomations {
                     setting.getIdleScanIntervalSeconds(), PluginRuntimeSetting.MIN_IDLE_SCAN_INTERVAL_SECONDS,
                     PluginRuntimeSetting.MAX_IDLE_SCAN_INTERVAL_SECONDS));
         }
-        if (payload.containsKey("maxRunningPlugins")) {
-            setting.setMaxRunningPlugins(longValue(payload.get("maxRunningPlugins"), setting.getMaxRunningPlugins(),
-                    PluginRuntimeSetting.MIN_MAX_RUNNING_PLUGINS, PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS));
-        }
         if (payload.containsKey("maxConcurrentStarts")) {
             setting.setMaxConcurrentStarts(longValue(payload.get("maxConcurrentStarts"),
                     setting.getMaxConcurrentStarts(), PluginRuntimeSetting.MIN_MAX_CONCURRENT_STARTS,
@@ -164,7 +160,6 @@ public final class RuntimeSystemAutomations {
         payload.put("idleStopEnabled", runtimeSetting.getIdleStopEnabled());
         payload.put("idleTimeoutSeconds", runtimeSetting.getIdleTimeoutSeconds());
         payload.put(IDLE_SCAN_INTERVAL_SECONDS, runtimeSetting.getIdleScanIntervalSeconds());
-        payload.put("maxRunningPlugins", runtimeSetting.getMaxRunningPlugins());
         payload.put("maxConcurrentStarts", runtimeSetting.getMaxConcurrentStarts());
         payload.put("startFailureBackoffSeconds", runtimeSetting.getStartFailureBackoffSeconds());
         return payload;
@@ -348,7 +343,6 @@ public final class RuntimeSystemAutomations {
             normalized.setIdleStopEnabled(setting.getIdleStopEnabled());
             normalized.setIdleTimeoutSeconds(setting.getIdleTimeoutSeconds());
             normalized.setIdleScanIntervalSeconds(setting.getIdleScanIntervalSeconds());
-            normalized.setMaxRunningPlugins(setting.getMaxRunningPlugins());
             normalized.setMaxConcurrentStarts(setting.getMaxConcurrentStarts());
             normalized.setStartFailureBackoffSeconds(setting.getStartFailureBackoffSeconds());
         }

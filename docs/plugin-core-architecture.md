@@ -313,3 +313,11 @@ plugin-core 前端固定依赖 `@zrlog/ui@0.1.2`，通过 `useUiTheme` / `ThemeS
 外观继续走已有服务端请求头链路，不增加浏览器通信：后台鉴权后解析管理员个人偏好，缺失字段继承站点默认，由 base 代理生成 `Admin-Theme`、`Dark-Mode`、`Admin-Color-Primary`、`Admin-Compact-Mode`。plugin-core 的 `AdminTheme` 忽略头名称大小写，缺失值从站点设置回退，随后将 `theme`、`dark`、`primaryColor`、`compactMode` 写入插件页面初始化数据及 `/api/plugins` 响应。新字段也保留在转发给业务插件的请求头中，插件可按需使用。
 
 未设置主题时使用 `default`，缺失密度时为普通密度；未知主题由共享 UI 包回退默认主题。没有新增用户偏好持久化或鉴权协议。`PluginListResponse` 新字段随现有 Native warmup 序列化覆盖；base 的 `PluginAdminAppearance` 仅在单次请求内直接调用，不经 Gson。部署时需同步更新 base、admin-web 与 plugin-core。
+
+## 请求排队与启动并发
+
+按需运行不再限制已启动插件的总数。旧配置中的 `maxRunningPlugins` 被忽略，设置接口、运行维护任务和页面不再读写该字段。`maxConcurrentStarts` 仍限制同时启动的操作数；同一插件的并发启动请求共享一次启动结果，等待名额使用当前启动等待期限。空闲插件回收与失败退避继续生效。
+
+Socket 消息、控制消息和冷启动 Service 均按各自执行线程数消费队列，不因旧的 8/16 个排队位置用满而立即拒绝正常突发请求。Socket 的 payload 与每个任务 1 KiB 的管理开销共用内存预算，控制消息继续使用独立线程；Service 的 payload 与每个任务 1 KiB 的管理开销计入独立待处理预算。因此空报文也无法无界堆积，内存耗尽或关闭时仍拒绝新请求，排队不代表无限等待或保证超时请求最终执行。
+
+插件私有配置/历史写入不触发宿主缓存刷新，避免反馈成环。显式模板设置在回复插件之后、当前处理线程中同步刷新宿主；没有新增在 FaaS 请求结束后继续刷新的后台任务。这不替代 Lambda/D1 的端到端验收。

@@ -27,11 +27,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -43,9 +41,7 @@ public class PluginCoreSocketServer implements ISocketServer {
     private static final Logger LOGGER = LoggerUtil.getLogger(PluginCoreSocketServer.class);
     private static final String SELECTION_KEY_ATTR = "_selectionKey";
     static final int MESSAGE_HANDLER_THREADS = 4;
-    static final int MESSAGE_QUEUE_CAPACITY = 8;
     static final int CONTROL_HANDLER_THREADS = 2;
-    static final int CONTROL_QUEUE_CAPACITY = 16;
     static final int MAX_SOCKET_CONNECTIONS = 40;
     static final long HANDSHAKE_TIMEOUT_MS = 30000L;
     static final long DEFAULT_MAX_IN_FLIGHT_PACKET_BYTES = 32L * 1024L * 1024L;
@@ -73,7 +69,13 @@ public class PluginCoreSocketServer implements ISocketServer {
     }
 
     public PluginCoreSocketServer(PluginConfig pluginConfig, PluginBootstrapService pluginBootstrap) {
-        this(pluginConfig, pluginBootstrap, newMessageExecutor(), newControlExecutor(), null);
+        this(pluginConfig, pluginBootstrap, new SocketPacketMemoryBudget(configuredMaxInFlightPacketBytes()));
+    }
+
+    private PluginCoreSocketServer(PluginConfig pluginConfig, PluginBootstrapService pluginBootstrap,
+                                   SocketPacketMemoryBudget memoryBudget) {
+        this(pluginConfig, pluginBootstrap, newMessageExecutor(memoryBudget), newControlExecutor(memoryBudget), null,
+                memoryBudget, MAX_SOCKET_CONNECTIONS, HANDSHAKE_TIMEOUT_MS);
     }
 
     PluginCoreSocketServer(PluginConfig pluginConfig, PluginBootstrapService pluginBootstrap,
@@ -277,7 +279,7 @@ public class PluginCoreSocketServer implements ISocketServer {
                 IOSession createdSession = new IOSession(channel, selector,
                         new SocketCodec(new SocketEncode(),
                                 new SocketDecode(executor, controlExecutor, packetMemoryBudget)),
-                new ServerActionHandler(serviceInvocationDispatcher));
+                        new ServerActionHandler(serviceInvocationDispatcher));
                 createdSession.addCloseListener(() -> onSessionClosed(createdSession));
                 session = createdSession;
                 decoderMap.put(socket, session);
@@ -329,29 +331,23 @@ public class PluginCoreSocketServer implements ISocketServer {
     }
 
     static ThreadPoolExecutor newMessageExecutor() {
+        return newMessageExecutor(new SocketPacketMemoryBudget(configuredMaxInFlightPacketBytes()));
+    }
+
+    static ThreadPoolExecutor newMessageExecutor(SocketPacketMemoryBudget memoryBudget) {
         AtomicInteger threadIndex = new AtomicInteger();
-        return new ThreadPoolExecutor(
-                MESSAGE_HANDLER_THREADS,
-                MESSAGE_HANDLER_THREADS,
-                0L,
-                TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(MESSAGE_QUEUE_CAPACITY),
-                runnable -> new Thread(runnable, "zrlog-plugin-message-" + threadIndex.incrementAndGet()),
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        return new PacketDispatchExecutor(MESSAGE_HANDLER_THREADS,
+                runnable -> new Thread(runnable, "zrlog-plugin-message-" + threadIndex.incrementAndGet()), memoryBudget);
     }
 
     static ThreadPoolExecutor newControlExecutor() {
+        return newControlExecutor(new SocketPacketMemoryBudget(configuredMaxInFlightPacketBytes()));
+    }
+
+    static ThreadPoolExecutor newControlExecutor(SocketPacketMemoryBudget memoryBudget) {
         AtomicInteger threadIndex = new AtomicInteger();
-        return new ThreadPoolExecutor(
-                CONTROL_HANDLER_THREADS,
-                CONTROL_HANDLER_THREADS,
-                0L,
-                TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(CONTROL_QUEUE_CAPACITY),
-                runnable -> new Thread(runnable, "zrlog-plugin-control-" + threadIndex.incrementAndGet()),
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+        return new PacketDispatchExecutor(CONTROL_HANDLER_THREADS,
+                runnable -> new Thread(runnable, "zrlog-plugin-control-" + threadIndex.incrementAndGet()), memoryBudget);
     }
 
     private void shutdownExecutors() {

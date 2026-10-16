@@ -14,8 +14,8 @@ import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.DefaultPluginRuntimeStarter;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
-import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.runtime.state.PluginStartDeferredException;
+import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore;
 import com.zrlog.plugincore.server.runtime.state.PluginRuntimeStates;
 import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
@@ -327,7 +327,7 @@ public class PluginProcessRuntime {
                         CmdUtil.sendCmd("chmod", "a+x", pluginFile.toString());
                     }
                 }
-                ProcessSlot slot = startProcessWithinCapacity(pluginId, pluginShortName, launchCommand);
+                ProcessSlot slot = startProcess(pluginId, pluginShortName, launchCommand);
                 if (slot != null) {
                     Process pr = slot.process;
                     try {
@@ -358,18 +358,13 @@ public class PluginProcessRuntime {
         }
     }
 
-    private ProcessSlot startProcessWithinCapacity(String pluginId, String pluginShortName,
-                                                   LaunchCommand launchCommand) {
+    private ProcessSlot startProcess(String pluginId, String pluginShortName,
+                                     LaunchCommand launchCommand) {
         if (StringUtils.isEmpty(pluginId)) {
             throw new IllegalArgumentException("pluginId is required");
         }
         synchronized (processCapacityLock) {
             reapExitedProcesses();
-            PluginRuntimeSetting runtimeSetting = runtimeSetting();
-            int maxRunningPlugins = runtimeSetting.getMaxRunningPlugins().intValue();
-            if (!hasProcessCapacity(processMap.size(), runtimeSetting)) {
-                throw new PluginStartDeferredException("Plugin runtime capacity reached (max " + maxRunningPlugins + ")");
-            }
             ProcessSlot slot = new ProcessSlot(pluginShortName);
             Thread watcher = newProcessWatcher(slot, pluginId);
             try {
@@ -480,15 +475,6 @@ public class PluginProcessRuntime {
             }
             cleanupUnexpectedExit(entry.getKey(), slot.pluginShortName, slot, processExitCode(process));
         }
-    }
-
-    static boolean hasProcessCapacity(int runningProcesses, PluginRuntimeSetting runtimeSetting) {
-        return !runtimeSetting.getOnDemandEnabled()
-                || runningProcesses < Math.max(1, runtimeSetting.getMaxRunningPlugins().intValue());
-    }
-
-    private PluginRuntimeSetting runtimeSetting() {
-        return PluginCoreDAO.getInstance().loadSnapshot().getSetting().getRuntime();
     }
 
     private void printInputStreamWithThread(final Process pr, final InputStream in, final String pluginShortName,

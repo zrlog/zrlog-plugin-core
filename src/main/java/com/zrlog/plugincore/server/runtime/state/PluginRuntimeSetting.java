@@ -7,9 +7,6 @@ public class PluginRuntimeSetting {
     public static final long MIN_IDLE_SCAN_INTERVAL_SECONDS = 60L;
     public static final long MAX_IDLE_SCAN_INTERVAL_SECONDS = 3600L;
     public static final long DEFAULT_IDLE_SCAN_INTERVAL_SECONDS = 300L;
-    public static final long MIN_MAX_RUNNING_PLUGINS = 1L;
-    public static final long MAX_MAX_RUNNING_PLUGINS = 32L;
-    public static final long DEFAULT_MAX_RUNNING_PLUGINS = 4L;
     public static final long MIN_MAX_CONCURRENT_STARTS = 1L;
     public static final long MAX_MAX_CONCURRENT_STARTS = 8L;
     public static final long DEFAULT_MAX_CONCURRENT_STARTS = 2L;
@@ -25,7 +22,6 @@ public class PluginRuntimeSetting {
     private Boolean idleStopEnabled = true;
     private Long idleTimeoutSeconds = 300L;
     private Long idleScanIntervalSeconds = DEFAULT_IDLE_SCAN_INTERVAL_SECONDS;
-    private Long maxRunningPlugins = DEFAULT_MAX_RUNNING_PLUGINS;
     private Long maxConcurrentStarts = DEFAULT_MAX_CONCURRENT_STARTS;
     private Long startFailureBackoffSeconds = DEFAULT_START_FAILURE_BACKOFF_SECONDS;
 
@@ -84,15 +80,6 @@ public class PluginRuntimeSetting {
         this.idleScanIntervalSeconds = idleScanIntervalSeconds;
     }
 
-    public Long getMaxRunningPlugins() {
-        return bounded(maxRunningPlugins, DEFAULT_MAX_RUNNING_PLUGINS,
-                MIN_MAX_RUNNING_PLUGINS, MAX_MAX_RUNNING_PLUGINS);
-    }
-
-    public void setMaxRunningPlugins(Long maxRunningPlugins) {
-        this.maxRunningPlugins = maxRunningPlugins;
-    }
-
     public Long getMaxConcurrentStarts() {
         return bounded(maxConcurrentStarts, DEFAULT_MAX_CONCURRENT_STARTS,
                 MIN_MAX_CONCURRENT_STARTS, MAX_MAX_CONCURRENT_STARTS);
@@ -117,7 +104,6 @@ public class PluginRuntimeSetting {
         idleStopEnabled = getIdleStopEnabled();
         idleTimeoutSeconds = getIdleTimeoutSeconds();
         idleScanIntervalSeconds = getIdleScanIntervalSeconds();
-        maxRunningPlugins = getMaxRunningPlugins();
         maxConcurrentStarts = getMaxConcurrentStarts();
         startFailureBackoffSeconds = getStartFailureBackoffSeconds();
     }
