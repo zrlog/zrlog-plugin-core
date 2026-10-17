@@ -16,7 +16,7 @@ jobs:
       matrix:
         os: [ ubuntu-22.04,ubuntu-24.04-arm,macos-15-intel,macos-14,windows-2022 ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: graalvm/setup-graalvm@v1
@@ -28,7 +28,7 @@ jobs:
           native-image-job-reports: 'true'
 
       - name: Cache node modules admin
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: src/main/frontend/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('src/main/frontend/yarn.lock') }}
@@ -41,7 +41,7 @@ jobs:
           bash -e bin/package-native-github.sh /tmp/download/plugin/core
       - name: Process Linux binary
         if: runner.os == 'Linux'
-        uses: 94fzb/zrlog/.github/actions/process-artifact@11868b0b0f606f19367e69f839cddff3abf1747e
+        uses: zrlog/zrlog-process-artifact@d9e0ab9fdcba76c9fb24eb5b09f43218dfecca1a # v1.0.0
         with:
           artifact-file: ${{ steps.package.outputs.artifact_file }}
           artifact-name: ${{ steps.package.outputs.artifact_name }}
