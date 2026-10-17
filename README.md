@@ -38,7 +38,9 @@ export JAVA_HOME=${HOME}/dev/graalvm-jdk-latest
 export PATH=${JAVA_HOME}/bin:$PATH
 ```
 
-Linux Native 和 FaaS Native workflow 会在上传前通过 `zrlog-artifact-service` 处理可执行文件。
+Linux Native 和 FaaS Native workflow 会在上传前通过固定提交的
+[`zrlog-process-artifact`](https://github.com/zrlog/zrlog-process-artifact) Action 调用
+`zrlog-artifact-service` 处理并校验可执行文件。客户端用法与故障处理见该仓库 README。
 仓库需要配置 `ARTIFACT_SERVICE_TOKEN` GitHub Actions Secret；Windows 和 macOS 构建不调用
 该服务。
 
