@@ -539,7 +539,6 @@ public class RuntimeAutomationServiceTest {
         setting.setIdleStopEnabled(Boolean.TRUE);
         setting.setIdleTimeoutSeconds(420L);
         setting.setIdleScanIntervalSeconds(600L);
-        setting.setMaxRunningPlugins(3L);
         setting.setMaxConcurrentStarts(1L);
         setting.setStartFailureBackoffSeconds(45L);
         return setting;
@@ -552,7 +551,6 @@ public class RuntimeAutomationServiceTest {
         assertEquals(expected.getIdleStopEnabled(), actual.getIdleStopEnabled());
         assertEquals(expected.getIdleTimeoutSeconds(), actual.getIdleTimeoutSeconds());
         assertEquals(expected.getIdleScanIntervalSeconds(), actual.getIdleScanIntervalSeconds());
-        assertEquals(expected.getMaxRunningPlugins(), actual.getMaxRunningPlugins());
         assertEquals(expected.getMaxConcurrentStarts(), actual.getMaxConcurrentStarts());
         assertEquals(expected.getStartFailureBackoffSeconds(), actual.getStartFailureBackoffSeconds());
     }

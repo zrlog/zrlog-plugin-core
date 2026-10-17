@@ -178,70 +178,47 @@ public class PluginCoreSocketServerTest {
     }
 
     @Test
-    public void shouldRejectSocketMessagesAtBoundedQueueCapacity() throws Exception {
-        ThreadPoolExecutor executor = PluginCoreSocketServer.newMessageExecutor();
-        CountDownLatch workersStarted = new CountDownLatch(PluginCoreSocketServer.MESSAGE_HANDLER_THREADS);
-        CountDownLatch release = new CountDownLatch(1);
-        Runnable blockingTask = () -> {
-            workersStarted.countDown();
-            try {
-                release.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        };
-        try {
-            for (int i = 0; i < PluginCoreSocketServer.MESSAGE_HANDLER_THREADS; i++) {
-                executor.execute(blockingTask);
-            }
-            assertTrue(workersStarted.await(5, TimeUnit.SECONDS));
-            for (int i = 0; i < PluginCoreSocketServer.MESSAGE_QUEUE_CAPACITY; i++) {
-                executor.execute(() -> {
-                });
-            }
-            try {
-                executor.execute(() -> {
-                });
-                fail("socket message executor should reject work after reaching its memory boundary");
-            } catch (RejectedExecutionException expected) {
-                // expected
-            }
-        } finally {
-            release.countDown();
-            executor.shutdownNow();
-            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
-        }
+    public void shouldQueueSocketBurstUntilWorkersAreAvailable() throws Exception {
+        assertBurstDrains(PluginCoreSocketServer.newMessageExecutor(),
+                PluginCoreSocketServer.MESSAGE_HANDLER_THREADS);
     }
 
     @Test
-    public void shouldRejectControlMessagesAtBoundedQueueCapacity() throws Exception {
-        ThreadPoolExecutor executor = PluginCoreSocketServer.newControlExecutor();
-        CountDownLatch workersStarted = new CountDownLatch(PluginCoreSocketServer.CONTROL_HANDLER_THREADS);
+    public void shouldQueueControlBurstUntilWorkersAreAvailable() throws Exception {
+        assertBurstDrains(PluginCoreSocketServer.newControlExecutor(),
+                PluginCoreSocketServer.CONTROL_HANDLER_THREADS);
+    }
+
+    private static void assertBurstDrains(ThreadPoolExecutor executor, int workerCount) throws Exception {
+        CountDownLatch workersStarted = new CountDownLatch(workerCount);
         CountDownLatch release = new CountDownLatch(1);
-        Runnable blockingTask = () -> {
-            workersStarted.countDown();
-            try {
-                release.await();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        };
+        CountDownLatch completed = new CountDownLatch(64);
+        AtomicInteger ranOnCaller = new AtomicInteger();
+        Thread caller = Thread.currentThread();
         try {
-            for (int i = 0; i < PluginCoreSocketServer.CONTROL_HANDLER_THREADS; i++) {
-                executor.execute(blockingTask);
+            for (int i = 0; i < workerCount; i++) {
+                executor.execute(() -> {
+                    workersStarted.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                });
             }
             assertTrue(workersStarted.await(5, TimeUnit.SECONDS));
-            for (int i = 0; i < PluginCoreSocketServer.CONTROL_QUEUE_CAPACITY; i++) {
+            for (int i = 0; i < 64; i++) {
                 executor.execute(() -> {
+                    if (Thread.currentThread() == caller) {
+                        ranOnCaller.incrementAndGet();
+                    }
+                    completed.countDown();
                 });
             }
-            try {
-                executor.execute(() -> {
-                });
-                fail("socket control executor should reject work after reaching its queue boundary");
-            } catch (RejectedExecutionException expected) {
-                // expected
-            }
+            assertEquals(64, executor.getQueue().size());
+            release.countDown();
+            assertTrue(completed.await(5, TimeUnit.SECONDS));
+            assertEquals(0, ranOnCaller.get());
         } finally {
             release.countDown();
             executor.shutdownNow();

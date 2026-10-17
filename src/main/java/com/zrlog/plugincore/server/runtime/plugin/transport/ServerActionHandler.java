@@ -58,13 +58,19 @@ public class ServerActionHandler implements IActionHandler {
     private static final Logger LOGGER = LoggerUtil.getLogger(ServerActionHandler.class);
 
     private final ServiceInvocationDispatcher serviceInvocationDispatcher;
+    private final Runnable hostCacheRefresh;
 
     public ServerActionHandler() {
         this(null);
     }
 
     ServerActionHandler(ServiceInvocationDispatcher serviceInvocationDispatcher) {
+        this(serviceInvocationDispatcher, ServerActionHandler::doRefreshCache);
+    }
+
+    ServerActionHandler(ServiceInvocationDispatcher serviceInvocationDispatcher, Runnable hostCacheRefresh) {
         this.serviceInvocationDispatcher = serviceInvocationDispatcher;
+        this.hostCacheRefresh = hostCacheRefresh;
     }
 
     @Override
@@ -76,7 +82,7 @@ public class ServerActionHandler implements IActionHandler {
         }
     }
 
-    private void doRefreshCache() {
+    static void doRefreshCache() {
         if (RunConstants.runType != RunType.BLOG) {
             return;
         }
@@ -489,10 +495,11 @@ public class ServerActionHandler implements IActionHandler {
                 }
             }
             session.sendJsonMsg(resultMap, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
-            try {
-                doRefreshCache();
-            } catch (Exception e) {
-                throw new RuntimeException(e);
+            // Plugin-private task/history writes are already read directly from the
+            // database. Broadcasting a host refresh here feeds static sync history
+            // back into the same event and exhausts the bounded socket workers.
+            if (syncOptions != null && syncOptions.hasSyncTemplate()) {
+                hostCacheRefresh.run();
             }
         }
     }

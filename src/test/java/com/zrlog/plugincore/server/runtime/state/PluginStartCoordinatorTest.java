@@ -48,6 +48,44 @@ public class PluginStartCoordinatorTest {
     }
 
     @Test
+    public void shouldWaitForBusyStartSlotAndRunTheNextPlugin() throws Exception {
+        PluginStartCoordinator coordinator = new PluginStartCoordinator();
+        CountDownLatch firstStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        AtomicBoolean firstResult = new AtomicBoolean();
+        AtomicBoolean secondResult = new AtomicBoolean();
+        AtomicInteger secondStarts = new AtomicInteger();
+        Thread first = new Thread(() -> firstResult.set(coordinator.start("plugin-a", 1, 5000, 5000, 0, () -> {
+            firstStarted.countDown();
+            await(releaseFirst);
+            return true;
+        })));
+        Thread second = new Thread(() -> secondResult.set(coordinator.start("plugin-b", 1, 5000, 5000, 0, () -> {
+            secondStarts.incrementAndGet();
+            return true;
+        })));
+        try {
+            first.start();
+            assertTrue(firstStarted.await(5, TimeUnit.SECONDS));
+            second.start();
+            assertTrue(awaitBlocked(second));
+            assertEquals(0, secondStarts.get());
+            releaseFirst.countDown();
+            first.join(5000);
+            second.join(5000);
+            assertTrue(firstResult.get());
+            assertTrue(secondResult.get());
+            assertEquals(1, secondStarts.get());
+        } finally {
+            releaseFirst.countDown();
+            first.interrupt();
+            second.interrupt();
+            first.join(5000);
+            second.join(5000);
+        }
+    }
+
+    @Test
     public void shouldBoundConcurrentStarts() throws Exception {
         PluginStartCoordinator coordinator = new PluginStartCoordinator();
         CountDownLatch actionStarted = new CountDownLatch(1);

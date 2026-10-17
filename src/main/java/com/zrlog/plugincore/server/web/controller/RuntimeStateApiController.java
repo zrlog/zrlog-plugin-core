@@ -90,8 +90,6 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
                         PluginRuntimeSetting.MIN_IDLE_TIMEOUT_SECONDS, PluginRuntimeSetting.MAX_IDLE_TIMEOUT_SECONDS);
                 Long idleScanIntervalSeconds = runtimeLongParam("idleScanIntervalSeconds", setting.getIdleScanIntervalSeconds(),
                         PluginRuntimeSetting.MIN_IDLE_SCAN_INTERVAL_SECONDS, PluginRuntimeSetting.MAX_IDLE_SCAN_INTERVAL_SECONDS);
-                Long maxRunningPlugins = runtimeLongParam("maxRunningPlugins", setting.getMaxRunningPlugins(),
-                        PluginRuntimeSetting.MIN_MAX_RUNNING_PLUGINS, PluginRuntimeSetting.MAX_MAX_RUNNING_PLUGINS);
                 Long maxConcurrentStarts = runtimeLongParam("maxConcurrentStarts", setting.getMaxConcurrentStarts(),
                         PluginRuntimeSetting.MIN_MAX_CONCURRENT_STARTS, PluginRuntimeSetting.MAX_MAX_CONCURRENT_STARTS);
                 Long startFailureBackoffSeconds = runtimeLongParam("startFailureBackoffSeconds",
@@ -103,7 +101,6 @@ public class RuntimeStateApiController extends RuntimeBaseApiController {
                 requested.setIdleStopEnabled(idleStopEnabled);
                 requested.setIdleTimeoutSeconds(idleTimeoutSeconds);
                 requested.setIdleScanIntervalSeconds(idleScanIntervalSeconds);
-                requested.setMaxRunningPlugins(maxRunningPlugins);
                 requested.setMaxConcurrentStarts(maxConcurrentStarts);
                 requested.setStartFailureBackoffSeconds(startFailureBackoffSeconds);
                 automationService().saveRuntimeMaintenance(requested, null);

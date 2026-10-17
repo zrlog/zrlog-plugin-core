@@ -3,7 +3,6 @@ package com.zrlog.plugincore.server.runtime.plugin.process;
 import com.zrlog.plugin.common.model.BlogRunTime;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
-import com.zrlog.plugincore.server.runtime.state.PluginRuntimeSetting;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
@@ -118,22 +117,36 @@ public class PluginProcessRuntimeTest {
     }
 
     @Test
-    public void shouldIgnoreRuntimeCapacityInStartupMode() {
-        PluginRuntimeSetting setting = new PluginRuntimeSetting();
-        setting.setOnDemandEnabled(false);
-        setting.setMaxRunningPlugins(8L);
-
-        assertTrue(PluginProcessRuntime.hasProcessCapacity(9, setting));
-    }
-
-    @Test
-    public void shouldRejectNewPluginWhenOnDemandRuntimeCapacityIsFull() {
-        PluginRuntimeSetting setting = new PluginRuntimeSetting();
-        setting.setOnDemandEnabled(true);
-        setting.setMaxRunningPlugins(8L);
-
-        assertFalse(PluginProcessRuntime.hasProcessCapacity(8, setting));
-        assertTrue(PluginProcessRuntime.hasProcessCapacity(7, setting));
+    public void shouldStartMoreThanFourDistinctPluginsOnDemand() throws Exception {
+        Path pluginRoot = Files.createTempDirectory("plugin-process-many");
+        AtomicInteger spawned = new AtomicInteger();
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+            TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, null, false) {
+                @Override
+                Process startPluginProcess(LaunchCommand launchCommand) {
+                    final long pid = 4242L + spawned.incrementAndGet();
+                    return new ManagedControlledProcess(true) {
+                        @Override
+                        public long pid() {
+                            return pid;
+                        }
+                    };
+                }
+            };
+            try {
+                for (int i = 0; i < 6; i++) {
+                    assertTrue(runtime.loadPlugin(pluginFile(pluginRoot, "plugin-" + i + ".jar"),
+                            "plugin-" + i) != null);
+                }
+                assertEquals(6, spawned.get());
+                assertEquals(6, trackedProcessCount(runtime));
+            } finally {
+                runtime.shutdownProcesses(1000L, 1000L);
+            }
+            assertEquals(0, trackedProcessCount(runtime));
+        } finally {
+            delete(pluginRoot);
+        }
     }
 
     @Test
