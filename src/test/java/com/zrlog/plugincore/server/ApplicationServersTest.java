@@ -73,9 +73,10 @@ public class ApplicationServersTest {
         BlockingHttpServer httpServer = new BlockingHttpServer(stopOrder, false);
         ApplicationServers applicationServers = new ApplicationServers(ignored -> runtimeServer, () -> httpServer);
         services = PluginRuntimeServices.unconfigured();
+        AtomicInteger readinessCount = new AtomicInteger();
 
         try {
-            applicationServers.start(0, services);
+            applicationServers.start(0, services, readinessCount::incrementAndGet);
             fail("Expected HTTP startup failure");
         } catch (IllegalStateException e) {
             assertEquals("Unable to start plugin http server", e.getMessage());
@@ -84,6 +85,58 @@ public class ApplicationServersTest {
         assertEquals(1, httpServer.stopCount.get());
         assertEquals(1, runtimeServer.stopCount.get());
         assertEquals(List.of("http", "runtime"), stopOrder);
+        assertEquals(0, readinessCount.get());
+    }
+
+    @Test
+    public void shouldNotAnnounceReadinessWhenRuntimeTransportCannotStart() {
+        List<String> stopOrder = new CopyOnWriteArrayList<>();
+        RecordingRuntimeServer runtimeServer = new RecordingRuntimeServer(stopOrder) {
+            @Override
+            public boolean start(boolean bootstrapRuntimeWorkers) {
+                return false;
+            }
+        };
+        BlockingHttpServer httpServer = new BlockingHttpServer(stopOrder, true);
+        ApplicationServers applicationServers = new ApplicationServers(ignored -> runtimeServer, () -> httpServer);
+        services = PluginRuntimeServices.unconfigured();
+        AtomicInteger readinessCount = new AtomicInteger();
+
+        applicationServers.start(0, services, readinessCount::incrementAndGet);
+
+        assertEquals(0, readinessCount.get());
+        assertEquals(1L, httpServer.started.getCount());
+        assertEquals(1, runtimeServer.stopCount.get());
+        assertEquals(List.of("http", "runtime"), stopOrder);
+    }
+
+    @Test
+    public void shouldAnnounceReadinessOnlyAfterBothServersStart() {
+        List<String> events = new CopyOnWriteArrayList<>();
+        RecordingRuntimeServer runtimeServer = new RecordingRuntimeServer(events) {
+            @Override
+            public boolean start(boolean bootstrapRuntimeWorkers) {
+                events.add("runtime-started");
+                return true;
+            }
+        };
+        BlockingHttpServer httpServer = new BlockingHttpServer(events, true) {
+            @Override
+            public boolean start(Integer port, boolean agent, PluginRuntimeServices runtimeServices) {
+                events.add("http-started");
+                return super.start(port, agent, runtimeServices);
+            }
+        };
+        ApplicationServers applicationServers = new ApplicationServers(ignored -> runtimeServer, () -> httpServer);
+        services = PluginRuntimeServices.unconfigured();
+
+        applicationServers.start(0, services, () -> {
+            assertEquals(List.of("runtime-started", "http-started"), events);
+            events.add("ready");
+            applicationServers.stop("readiness callback stop");
+        });
+
+        assertEquals(List.of("runtime-started", "http-started", "ready", "http", "runtime"), events);
     }
 
     @Test

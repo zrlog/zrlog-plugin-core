@@ -49,7 +49,13 @@ class ApplicationServers {
     }
 
     void start(Integer httpPort, PluginRuntimeServices services) {
+        start(httpPort, services, () -> {
+        });
+    }
+
+    void start(Integer httpPort, PluginRuntimeServices services, Runnable onReady) {
         Objects.requireNonNull(services);
+        Objects.requireNonNull(onReady);
         RunningServers servers = new RunningServers(runtimeServerFactory.apply(services), httpServerFactory.get());
         if (!runningServers.compareAndSet(null, servers)) {
             throw new IllegalStateException("Plugin servers are already running");
@@ -65,6 +71,7 @@ class ApplicationServers {
             if (!servers.httpServer.start(httpPort, PluginCoreRunMode.isNativeAgent(), services)) {
                 throw new IllegalStateException("Unable to start plugin http server");
             }
+            onReady.run();
             servers.httpServer.awaitStopped();
         } catch (RuntimeException | Error e) {
             stopReason = "plugin http server failed";

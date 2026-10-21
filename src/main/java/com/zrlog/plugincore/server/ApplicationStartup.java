@@ -40,9 +40,10 @@ class ApplicationStartup {
         PluginHostConnection hostConnection = new PluginHostConnection(options.getBlogApiHomeUrl(),
                 options.getBlogPluginToken(), options.getNativeInfo(), options.getContextPath());
         PluginRuntimeServices services = PluginRuntimeServices.create(pluginConfig, hostConnection);
-        startBlogListener(options.getListenBlogPort());
         new PluginDataSourceInitializer().initialize(pluginConfig.getDbPropertiesFile());
-        servers.start(options.getHttpPort(), services);
+        // The host treats the watcher connection as a live Runtime. Do not
+        // expose it for a child that failed to bind either application server.
+        servers.start(options.getHttpPort(), services, () -> startBlogListener(options.getListenBlogPort()));
     }
 
     private boolean shouldShowTips(String[] args) {
