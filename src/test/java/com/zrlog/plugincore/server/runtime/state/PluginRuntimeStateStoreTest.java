@@ -14,9 +14,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -181,29 +178,61 @@ public class PluginRuntimeStateStoreTest {
     }
 
     @Test
-    public void shouldUseUpdateLockAroundRuntimeStateMutationWhenProvided() {
-        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
-        RecordingLock lock = new RecordingLock(true);
-        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore, lock);
+    public void shouldLeaveStateUnchangedWhenConflictRetriesAreExhausted() {
+        StaleOnceKvStore kvStore = new StaleOnceKvStore(
+                Optional.<String>empty(), documentJson(state("plugin-b", "two")), Integer.MAX_VALUE);
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
 
-        store.upsert(state("plugin-a", "one"));
+        try {
+            store.upsert(state("plugin-a", "one"));
+            fail("persistent write conflicts must fail explicitly");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage().contains("concurrent modification"));
+        }
 
-        assertEquals(1, lock.getTryLockCount());
-        assertEquals(1, lock.getUnlockCount());
-        assertEquals("one", store.find("plugin-a").get().getPluginName());
+        assertEquals(1, store.list().size());
+        assertEquals("two", store.find("plugin-b").get().getPluginName());
+        assertTrue(!store.find("plugin-a").isPresent());
     }
 
     @Test
-    public void shouldFallbackToCasWhenUpdateLockIsBusy() {
+    public void shouldNotWriteWhenCallerIsAlreadyInterrupted() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
-        RecordingLock lock = new RecordingLock(false);
-        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore, lock);
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+        Thread.currentThread().interrupt();
+        try {
+            store.upsert(state("plugin-a", "one"));
+            fail("cancelled writes must not proceed");
+        } catch (IllegalStateException expected) {
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertTrue(store.list().isEmpty());
+        } finally {
+            Thread.interrupted();
+        }
+    }
 
-        store.upsert(state("plugin-a", "one"));
-
-        assertEquals(1, lock.getTryLockCount());
-        assertEquals(0, lock.getUnlockCount());
-        assertEquals("one", store.find("plugin-a").get().getPluginName());
+    @Test
+    public void shouldPreserveInterruptionAndOtherStatesWhenCancelledDuringRetry() {
+        StaleOnceKvStore kvStore = new StaleOnceKvStore(
+                Optional.<String>empty(), documentJson(state("plugin-b", "two"))) {
+            @Override
+            public synchronized boolean compareAndSet(String key, Optional<String> expectedValue, String value) {
+                boolean result = super.compareAndSet(key, expectedValue, value);
+                Thread.currentThread().interrupt();
+                return result;
+            }
+        };
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+        try {
+            store.upsert(state("plugin-a", "one"));
+            fail("cancelled retries must not proceed");
+        } catch (IllegalStateException expected) {
+            assertTrue(Thread.currentThread().isInterrupted());
+            assertEquals(1, store.list().size());
+            assertEquals("two", store.find("plugin-b").get().getPluginName());
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
@@ -413,52 +442,4 @@ public class PluginRuntimeStateStoreTest {
         }
     }
 
-    private static class RecordingLock implements Lock {
-        private final boolean acquired;
-        private int tryLockCount;
-        private int unlockCount;
-
-        private RecordingLock(boolean acquired) {
-            this.acquired = acquired;
-        }
-
-        @Override
-        public boolean tryLock(long time, TimeUnit unit) {
-            tryLockCount++;
-            return acquired;
-        }
-
-        @Override
-        public void unlock() {
-            unlockCount++;
-        }
-
-        @Override
-        public void lock() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void lockInterruptibly() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public boolean tryLock() {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public Condition newCondition() {
-            throw new UnsupportedOperationException();
-        }
-
-        private int getTryLockCount() {
-            return tryLockCount;
-        }
-
-        private int getUnlockCount() {
-            return unlockCount;
-        }
-    }
 }

@@ -9,6 +9,11 @@ on:
       - pom.xml
       - .github/workflows/runtime-regression.yml
   workflow_dispatch:
+    inputs:
+      native_candidate:
+        description: Also build a Linux Native engineering candidate without publishing
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -62,3 +67,41 @@ jobs:
           path: |
             target/plugin-core.jar
             target/core-candidate.json
+
+  native:
+    if: github.event_name == 'workflow_dispatch' && inputs.native_candidate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm
+          cache: maven
+          github-token: ${{ github.token }}
+      - name: Build Native engineering candidate with the production packaging entry
+        run: |
+          bash -e bin/package-native-github.sh "$RUNNER_TEMP/core-candidate"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'core-candidate'
+          binary = root / 'plugin-core-Linux-amd64.bin'
+          receipt = dict(source_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                         sha256=hashlib.sha256(binary.read_bytes()).hexdigest(), bytes=binary.stat().st_size,
+                         producer_run_id=os.environ['GITHUB_RUN_ID'], producer_attempt=os.environ['GITHUB_RUN_ATTEMPT'],
+                         boundary='Raw Native engineering candidate; no artifact processing or publication; not distribution acceptance.')
+          (root / 'core-candidate.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: core-native-regression-evidence
+          path: target/surefire-reports
+      - uses: actions/upload-artifact@v6
+        with:
+          name: core-native-engineering-candidate
+          path: ${{ runner.temp }}/core-candidate
