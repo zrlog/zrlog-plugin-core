@@ -196,16 +196,15 @@ public class PluginRuntimeStateStoreTest {
     }
 
     @Test
-    public void shouldNotWriteWhenCallerIsAlreadyInterrupted() {
+    public void shouldPersistCleanupStateWithoutClearingExistingInterruption() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+        store.upsert(state("plugin-a", "one"));
         Thread.currentThread().interrupt();
         try {
-            store.upsert(state("plugin-a", "one"));
-            fail("cancelled writes must not proceed");
-        } catch (IllegalStateException expected) {
+            store.update("plugin-a", state -> state.setStatus("failed"));
             assertTrue(Thread.currentThread().isInterrupted());
-            assertTrue(store.list().isEmpty());
+            assertEquals("failed", store.find("plugin-a").get().getStatus());
         } finally {
             Thread.interrupted();
         }
