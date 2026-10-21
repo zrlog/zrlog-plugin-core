@@ -2,9 +2,7 @@ package com.zrlog.plugincore.server.runtime.state;
 
 import com.google.gson.Gson;
 import com.zrlog.plugin.common.KvRepository;
-import com.zrlog.plugincore.server.runtime.lock.DistributedLock;
 import com.zrlog.plugincore.server.runtime.store.ConditionalKvRepository;
-import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDates;
 import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
 import com.zrlog.plugincore.server.type.PluginStatus;
@@ -18,8 +16,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -28,21 +24,13 @@ public class PluginRuntimeStateStore {
     public static final String KEY = "plugin.runtime.states";
     private static final int STORE_UPDATE_RETRIES = 10;
     private static final long STORE_UPDATE_RETRY_BACKOFF_MS = 5L;
-    private static final long STORE_UPDATE_LOCK_WAIT_MS = 5000L;
-    private static final String STORE_UPDATE_LOCK_KEY = "plugin_runtime_states";
     private static final Object STORE_UPDATE_LOCK = new Object();
 
     private final KvRepository kvStore;
-    private final Lock updateLock;
     private final Gson gson = new Gson();
 
     public PluginRuntimeStateStore(KvRepository kvStore) {
-        this(kvStore, newUpdateLock(kvStore));
-    }
-
-    PluginRuntimeStateStore(KvRepository kvStore, Lock updateLock) {
         this.kvStore = kvStore;
-        this.updateLock = updateLock;
     }
 
     public List<PluginRuntimeState> list() {
@@ -238,49 +226,27 @@ public class PluginRuntimeStateStore {
     }
 
     private <T> T mutateDocument(String failureMessage, StoreMutation<T> mutation) {
+        // Serialize local writers to reduce contention. Cross-process correctness comes
+        // from the repository's atomic CAS, without a persistent lease that can outlive a process.
         synchronized (STORE_UPDATE_LOCK) {
-            boolean locked = acquireUpdateLock(failureMessage);
-            try {
-                for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
-                    PluginRuntimeStateDocumentSnapshot snapshot = loadSnapshot();
-                    StoreMutationResult<T> result = mutation.mutate(snapshot);
-                    if (!result.isChanged()) {
-                        return result.getValue();
-                    }
-                    if (saveDocumentIfUnchanged(snapshot)) {
-                        return result.getValue();
-                    }
-                    if (i + 1 < STORE_UPDATE_RETRIES && !sleepBeforeRetry(i)) {
-                        throw new IllegalStateException(failureMessage);
-                    }
+            for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException(failureMessage, new InterruptedException());
                 }
-            } finally {
-                if (locked) {
-                    updateLock.unlock();
+                PluginRuntimeStateDocumentSnapshot snapshot = loadSnapshot();
+                StoreMutationResult<T> result = mutation.mutate(snapshot);
+                if (!result.isChanged()) {
+                    return result.getValue();
+                }
+                if (saveDocumentIfUnchanged(snapshot)) {
+                    return result.getValue();
+                }
+                if (i + 1 < STORE_UPDATE_RETRIES && !sleepBeforeRetry(i)) {
+                    throw new IllegalStateException(failureMessage);
                 }
             }
         }
         throw new IllegalStateException(failureMessage);
-    }
-
-    private boolean acquireUpdateLock(String failureMessage) {
-        if (updateLock == null) {
-            return false;
-        }
-        try {
-            // The DB lock reduces cross-process write contention; CAS remains the source of truth if the lock is stale.
-            return updateLock.tryLock(STORE_UPDATE_LOCK_WAIT_MS, TimeUnit.MILLISECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(failureMessage, e);
-        }
-    }
-
-    private static Lock newUpdateLock(KvRepository kvStore) {
-        if (kvStore instanceof WebsiteRuntimeKvStore) {
-            return new DistributedLock(STORE_UPDATE_LOCK_KEY);
-        }
-        return null;
     }
 
     private boolean sleepBeforeRetry(int attempt) {
