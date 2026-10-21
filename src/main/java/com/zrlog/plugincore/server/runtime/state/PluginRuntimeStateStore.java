@@ -230,9 +230,6 @@ public class PluginRuntimeStateStore {
         // from the repository's atomic CAS, without a persistent lease that can outlive a process.
         synchronized (STORE_UPDATE_LOCK) {
             for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
-                if (Thread.currentThread().isInterrupted()) {
-                    throw new IllegalStateException(failureMessage, new InterruptedException());
-                }
                 PluginRuntimeStateDocumentSnapshot snapshot = loadSnapshot();
                 StoreMutationResult<T> result = mutation.mutate(snapshot);
                 if (!result.isChanged()) {
