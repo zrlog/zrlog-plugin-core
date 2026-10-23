@@ -55,8 +55,10 @@ import com.zrlog.plugincore.server.runtime.pwa.PluginPwaManifest;
 import com.zrlog.plugincore.server.vo.PluginCoreSetting;
 import com.zrlog.plugincore.server.web.controller.RuntimeApiModels;
 import com.zrlog.plugincore.server.web.controller.PluginApiModels;
+import com.zrlog.plugincore.server.util.OutboundProxy;
 
 import java.lang.reflect.Method;
+import java.net.URI;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -72,6 +74,8 @@ final class NativeRuntimeWarmup {
     }
 
     static Result run() {
+        OutboundProxy.selector().select(URI.create("http://localhost/"));
+        OutboundProxy.selector().select(URI.create("https://dl.zrlog.com/"));
         Gson gson = new Gson();
         warmupActionTypes();
         int annotatedCapabilityCount = warmupAnnotatedCapabilityRead(gson);

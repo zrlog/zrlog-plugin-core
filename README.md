@@ -29,9 +29,23 @@ zrlogctl plugin upload travel-Linux-amd64.bin --overwrite
 注册失败会恢复原文件与元数据，原插件可能需要手动启动；恢复失败保留插件目录中的备份。
 客户端超时不自动重试，应先检查服务端插件状态。FaaS 上文件持久性取决于部署的可写插件目录。
 
+## HTTP 代理
+
+WebAPI 数据库连接检查和查询、插件 `HTTP_METHOD` 对外转发、插件包及 MD5 下载共用代理策略。
+主程序启动 plugin-core 时会通过 `http.proxyHost`、`https.proxyHost`、对应的 `proxyPort`
+和 `http.nonProxyHosts` 传入当前生效的代理配置，JVM 和 Native 模式使用同一策略。
+在主程序“系统信息 → 网络代理”保存后，需要重启 ZrLog 才会生效。
+
+独立启动时可使用上述 JVM 参数，或 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 环境变量；
+小写变量优先，空值表示显式停用对应协议的代理。主程序传入的 JVM 参数优先于环境变量，
+避免重新解释已经生效的配置。HTTP/HTTPS 分别配置，HTTPS 使用 CONNECT 隧道并保留证书校验，
+暂不支持代理认证。直连例外支持逗号分隔的主机名、IP、`.example.com` 和 `*.internal`，
+不支持端口或 CIDR。本机回环地址始终直连，原生 JDBC/SQLite 不走 HTTP 代理；代理失败不会回退直连。
+plugin-core 不自行读取主程序尚未重启生效的 `conf/proxy.properties`。
+
 ## 构建
 
-公共协议固定依赖 `zrlog-plugin-common:4.0.5`，数据库工具固定依赖 `common-dao:1.1.12`。先确认公共库正式制品已发布到 Maven Central，再合入依赖升级并发布运行时。构建在 `validate` 阶段拒绝项目、父 POM 及直接、传递依赖中的 SNAPSHOT。
+公共协议固定依赖 `zrlog-plugin-common:4.0.5`，数据库工具固定依赖 `common-dao:1.1.16`。先确认公共库正式制品已发布到 Maven Central，再合入依赖升级并发布运行时。构建在 `validate` 阶段拒绝项目、父 POM 及直接、传递依赖中的 SNAPSHOT。
 
 ```shell
 export JAVA_HOME=${HOME}/dev/graalvm-jdk-latest

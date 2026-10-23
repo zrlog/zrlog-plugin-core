@@ -8,6 +8,7 @@ import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.runtime.PluginCoreRunMode;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.util.LambdaEnv;
+import com.zrlog.plugincore.server.util.OutboundProxy;
 
 import java.io.File;
 import java.util.Arrays;
@@ -22,6 +23,7 @@ class ApplicationEnvironment {
     static void initStaticEnvironment() {
         System.setProperty("org.slf4j.simpleLogger.log.com.zaxxer.hikari", "off");
         LambdaEnv.initLambdaEnv();
+        OutboundProxy.selector();
     }
 
     static void initLogging() {

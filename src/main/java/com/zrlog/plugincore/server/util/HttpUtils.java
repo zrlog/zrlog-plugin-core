@@ -31,6 +31,7 @@ public class HttpUtils {
     static final long MAX_RESPONSE_BODY_BYTES = 4L * 1024L * 1024L;
     static final long MAX_PLUGIN_DOWNLOAD_BYTES = 256L * 1024L * 1024L;
     private static final HttpClient httpClient = HttpClient.newBuilder()
+            .proxy(OutboundProxy.selector())
             .connectTimeout(CONNECT_TIMEOUT)
             .build();
 
