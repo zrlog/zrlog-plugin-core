@@ -49,7 +49,7 @@ public class HttpUtils {
         downloadToFile(url, headers, target, MAX_PLUGIN_DOWNLOAD_BYTES);
     }
 
-    static void downloadToFile(String url, Map<String, String> headers, File target, long maxDownloadBytes) throws Exception {
+    public static void downloadToFile(String url, Map<String, String> headers, File target, long maxDownloadBytes) throws Exception {
         Path targetPath = target.toPath();
         Path parent = targetPath.getParent();
         if (parent != null) {

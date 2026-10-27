@@ -14,20 +14,20 @@ public final class PluginApiModels {
     public static class EmptyResponse {
     }
 
-    public static class UploadResponse {
+    public static class InstallResponse {
         private int error;
         private String message;
-        private UploadData data;
+        private InstallData data;
 
-        public static UploadResponse success(String shortName, String fileName, boolean overwritten, String message) {
-            UploadResponse response = new UploadResponse();
+        public static InstallResponse success(String shortName, String fileName, boolean overwritten, String message) {
+            InstallResponse response = new InstallResponse();
             response.message = message;
-            response.data = new UploadData(shortName, fileName, overwritten);
+            response.data = new InstallData(shortName, fileName, overwritten);
             return response;
         }
 
-        public static UploadResponse error(String message) {
-            UploadResponse response = new UploadResponse();
+        public static InstallResponse error(String message) {
+            InstallResponse response = new InstallResponse();
             response.error = 1;
             response.message = message;
             return response;
@@ -35,15 +35,15 @@ public final class PluginApiModels {
 
         public int getError() { return error; }
         public String getMessage() { return message; }
-        public UploadData getData() { return data; }
+        public InstallData getData() { return data; }
     }
 
-    public static class UploadData {
+    public static class InstallData {
         private String shortName;
         private String fileName;
         private boolean overwritten;
 
-        public UploadData(String shortName, String fileName, boolean overwritten) {
+        public InstallData(String shortName, String fileName, boolean overwritten) {
             this.shortName = shortName;
             this.fileName = fileName;
             this.overwritten = overwritten;

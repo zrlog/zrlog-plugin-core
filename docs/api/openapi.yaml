@@ -17,6 +17,69 @@ servers:
       baseUrl:
         default: http://localhost:17080
 paths:
+  /api/admin/plugins/install:
+    post:
+      summary: 从资源地址安装或更新插件
+      operationId: installPlugin
+      x-zrlog-controller: com.zrlog.plugincore.server.web.controller.PluginApiController#install
+      x-zrlog-response-kind: action
+      description: |-
+        需要 plugin.manage。使用 POST /api/admin/upload?dir=plugins&temporary=true 上传文件（该步骤需要 asset.upload），
+        将返回的 data.url 作为 source，并用原始插件包名作为 fileName；两次请求不要求命中同一进程或 Lambda 实例。
+        也可直接传入 https://dl.zrlog.com/plugin/ 下的插件包地址。文件最大 64 MiB。
+        下载白名单与凭据转发独立校验：只有 admin 临时资源转发 Cookie/Authorization，公开下载不携带用户凭据；
+        不跟随 HTTP 重定向。拒绝任意外部主机、路径穿越、协议相对地址及带编码歧义的路径。
+        两种来源共用包格式与平台校验、停止、原子替换、注册与失败恢复逻辑。
+        fileName 遵循 shortName.jar 或 shortName-OS-architecture.bin/.exe。
+        同名包默认拒绝，overwrite=true 明确替换。不自动重试安装；超时后请先检查插件状态。
+      security:
+        - AccessTokenBearer: []
+        - AdminTokenHeader: []
+        - AdminTokenCookie: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [source, fileName]
+              properties:
+                source:
+                  type: string
+                  description: admin 私有临时资源路径（可包含部署 context path），或 dl.zrlog.com/plugin 的 HTTPS 地址
+                  example: /admin/attached/tmp/plugins/20261027/abc.jar
+                fileName:
+                  type: string
+                  pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(jar|bin|exe)$'
+                  example: travel.jar
+                overwrite:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: 安装结果；error 非零表示业务失败
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error, message]
+                properties:
+                  error: {type: integer}
+                  message: {type: string}
+                  data:
+                    type: object
+                    properties:
+                      shortName: {type: string}
+                      fileName: {type: string}
+                      overwritten: {type: boolean}
+        '401':
+          description: 未登录或令牌无效
+        '403':
+          description: 缺少 plugin.manage 权限
+        '500':
+          description: 下载、文件读写、运行时或恢复失败
+        '503':
+          description: 插件运行时不可用
   /api/admin/plugins/upload:
     post:
       summary: 上传并注册插件
@@ -24,7 +87,9 @@ paths:
       x-zrlog-controller: com.zrlog.plugincore.server.web.controller.PluginApiController#upload
       x-zrlog-response-kind: action
       description: |-
-        需要 plugin.manage。后台仅转发到 plugin-core 的 POST /api/upload。
+        兼容原有 multipart 客户端，建议新调用方使用下方的两步上传与安装流程。
+        需要 plugin.manage 和 asset.upload。后台通过自己的文件服务将文件存入数据库临时资源库，
+        再将资源地址传给 plugin-core 的 POST /api/install；plugin-core 不接收二进制上传。
         上传单个可执行 JAR 或原生文件，最大 64 MiB；不接收 ZIP 或目录。
         fileName 必须与运行时查找规则一致：JVM 为 shortName.jar，原生为
         shortName-OS-architecture.bin（Windows 使用 .exe），系统和架构必须匹配服务端。
