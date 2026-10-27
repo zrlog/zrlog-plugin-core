@@ -21,7 +21,7 @@ import java.util.jar.Manifest;
 
 import static org.junit.Assert.*;
 
-public class PluginUploadServiceTest {
+public class PluginInstallServiceTest {
     @Rule public TemporaryFolder temporary = new TemporaryFolder();
 
     @Test
@@ -29,9 +29,9 @@ public class PluginUploadServiceTest {
         try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open()) {
             Path root = temporary.newFolder().toPath();
             FakeBootstrap bootstrap = new FakeBootstrap();
-            PluginUploadService service = new PluginUploadService(root, "", bootstrap);
+            PluginInstallService service = new PluginInstallService(root, "", bootstrap);
             File first = jar(1);
-            var response = service.upload("travel.jar", false, first);
+            var response = service.install("travel.jar", false, first);
             assertEquals(0, response.getError());
             assertEquals("travel", response.getData().getShortName());
             assertFalse(response.getData().isOverwritten());
@@ -39,9 +39,9 @@ public class PluginUploadServiceTest {
             assertArrayEquals(Files.readAllBytes(first.toPath()), Files.readAllBytes(bootstrap.registered.toPath()));
 
             File replacement = jar(2);
-            assertEquals(1, service.upload("travel.jar", false, replacement).getError());
+            assertEquals(1, service.install("travel.jar", false, replacement).getError());
             assertEquals(1, bootstrap.starts);
-            assertEquals(0, service.upload("travel.jar", true, replacement).getError());
+            assertEquals(0, service.install("travel.jar", true, replacement).getError());
             assertEquals(2, bootstrap.starts);
             assertArrayEquals(Files.readAllBytes(replacement.toPath()), Files.readAllBytes(root.resolve("travel.jar")));
             assertOnlyPluginRemains(root);
@@ -58,7 +58,7 @@ public class PluginUploadServiceTest {
             FakeBootstrap bootstrap = new FakeBootstrap();
             bootstrap.register = false;
             bootstrap.changeMetadata = true;
-            var response = new PluginUploadService(root, "", bootstrap).upload("travel.jar", true, jar(2));
+            var response = new PluginInstallService(root, "", bootstrap).install("travel.jar", true, jar(2));
             assertEquals(1, response.getError());
             assertArrayEquals(Files.readAllBytes(original.toPath()), Files.readAllBytes(root.resolve("travel.jar")));
             assertEquals("old-id", PluginCoreDAO.getInstance().getPluginVOByShortName("travel").getPlugin().getId());
@@ -73,7 +73,7 @@ public class PluginUploadServiceTest {
             FakeBootstrap bootstrap = new FakeBootstrap();
             bootstrap.register = false;
             bootstrap.changeMetadata = true;
-            assertEquals(1, new PluginUploadService(root, "", bootstrap).upload("travel.jar", false, jar(1)).getError());
+            assertEquals(1, new PluginInstallService(root, "", bootstrap).install("travel.jar", false, jar(1)).getError());
             assertNull(PluginCoreDAO.getInstance().getPluginVOByShortName("travel"));
             try (var files = Files.list(root)) { assertEquals(0, files.count()); }
         }
@@ -82,20 +82,20 @@ public class PluginUploadServiceTest {
     @Test
     public void rejectsUnsafeNamesInvalidFilesAndPlatformMismatchBeforeTouchingRuntime() throws Exception {
         FakeBootstrap bootstrap = new FakeBootstrap();
-        PluginUploadService service = new PluginUploadService(temporary.newFolder().toPath(), "", bootstrap);
+        PluginInstallService service = new PluginInstallService(temporary.newFolder().toPath(), "", bootstrap);
         File valid = jar(1);
         for (String name : new String[]{"../travel.jar", "/travel.jar", "..\\travel.jar", "travel.zip",
                 "travel jar.jar", "travel-Linux-amd64.bin", "travel.bin.jar"}) {
-            assertEquals(name, 1, service.upload(name, true, valid).getError());
+            assertEquals(name, 1, service.install(name, true, valid).getError());
         }
-        assertEquals(1, service.upload("travel.jar", false, null).getError());
-        assertEquals(1, service.upload("travel.jar", false, temporary.newFile()).getError());
+        assertEquals(1, service.install("travel.jar", false, null).getError());
+        assertEquals(1, service.install("travel.jar", false, temporary.newFile()).getError());
         File text = temporary.newFile();
         Files.writeString(text.toPath(), "not a jar");
-        assertEquals(1, service.upload("travel.jar", false, text).getError());
+        assertEquals(1, service.install("travel.jar", false, text).getError());
         File large = temporary.newFile();
-        try (RandomAccessFile file = new RandomAccessFile(large, "rw")) { file.setLength(PluginUploadService.MAX_FILE_SIZE + 1L); }
-        assertEquals(1, service.upload("travel.jar", false, large).getError());
+        try (RandomAccessFile file = new RandomAccessFile(large, "rw")) { file.setLength(PluginInstallService.MAX_FILE_SIZE + 1L); }
+        assertEquals(1, service.install("travel.jar", false, large).getError());
         assertEquals(0, bootstrap.stops);
     }
 
@@ -106,7 +106,7 @@ public class PluginUploadServiceTest {
         byte[] before = Files.readAllBytes(original.toPath());
         Files.createSymbolicLink(root.resolve("travel.jar"), original.toPath());
         FakeBootstrap bootstrap = new FakeBootstrap();
-        assertEquals(1, new PluginUploadService(root, "", bootstrap).upload("travel.jar", true, jar(2)).getError());
+        assertEquals(1, new PluginInstallService(root, "", bootstrap).install("travel.jar", true, jar(2)).getError());
         assertArrayEquals(before, Files.readAllBytes(original.toPath()));
         assertEquals(0, bootstrap.stops);
     }
@@ -119,7 +119,7 @@ public class PluginUploadServiceTest {
             Files.copy(original.toPath(), root.resolve("travel.jar"));
             FakeBootstrap bootstrap = new FakeBootstrap();
             bootstrap.stop = false;
-            assertEquals(1, new PluginUploadService(root, "", bootstrap).upload("travel.jar", true, jar(2)).getError());
+            assertEquals(1, new PluginInstallService(root, "", bootstrap).install("travel.jar", true, jar(2)).getError());
             assertEquals(0, bootstrap.starts);
             assertArrayEquals(Files.readAllBytes(original.toPath()), Files.readAllBytes(root.resolve("travel.jar")));
             assertOnlyPluginRemains(root);
@@ -132,10 +132,10 @@ public class PluginUploadServiceTest {
             Path root = temporary.newFolder().toPath();
             File binary = temporary.newFile();
             Files.write(binary.toPath(), new byte[]{0x7f, 'E', 'L', 'F', 2, 1});
-            PluginUploadService service = new PluginUploadService(root, "Linux-amd64", new FakeBootstrap());
-            assertEquals(1, service.upload("travel-Linux-arm64.bin", false, binary).getError());
-            assertEquals(1, service.upload("travel.jar", false, jar(1)).getError());
-            var response = service.upload("travel-Linux-amd64.bin", false, binary);
+            PluginInstallService service = new PluginInstallService(root, "Linux-amd64", new FakeBootstrap());
+            assertEquals(1, service.install("travel-Linux-arm64.bin", false, binary).getError());
+            assertEquals(1, service.install("travel.jar", false, jar(1)).getError());
+            var response = service.install("travel-Linux-amd64.bin", false, binary);
             assertEquals(0, response.getError());
             assertEquals("travel", response.getData().getShortName());
             assertEquals("travel-Linux-amd64.bin", response.getData().getFileName());

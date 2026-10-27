@@ -17,27 +17,31 @@ import java.nio.file.StandardCopyOption;
 import java.util.jar.JarFile;
 
 /** Installs artifacts in the same directory and naming scheme used by runtime startup. */
-public class PluginUploadService {
+public class PluginInstallService {
     public static final int MAX_FILE_SIZE = 64 * 1024 * 1024;
-    private static final Object UPLOAD_LOCK = new Object();
+    private static final Object INSTALL_LOCK = new Object();
 
     private final Path directory;
     private final String nativeInfo;
     private final PluginBootstrapService bootstrap;
 
-    public PluginUploadService() {
-        this(Path.of(PluginRuntimeBridge.pluginConfig().getPluginBasePath()),
+    public PluginInstallService() {
+        this(PluginFiles.downloadPluginFile("artifact.jar").toPath().getParent(),
                 PluginRuntimeBridge.hostConnection().getNativeInfo(), PluginRuntimeBridge.pluginBootstrap());
     }
 
-    PluginUploadService(Path directory, String nativeInfo, PluginBootstrapService bootstrap) {
+    PluginInstallService(Path directory, String nativeInfo, PluginBootstrapService bootstrap) {
         this.directory = directory.toAbsolutePath().normalize();
         this.nativeInfo = nativeInfo == null ? "" : nativeInfo;
         this.bootstrap = bootstrap;
     }
 
-    public PluginApiModels.UploadResponse upload(String fileName, boolean overwrite, File source) throws IOException {
-        if (fileName == null || !fileName.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.(jar|bin|exe)")) {
+    static boolean validName(String fileName) {
+        return fileName != null && fileName.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.(jar|bin|exe)");
+    }
+
+    public PluginApiModels.InstallResponse install(String fileName, boolean overwrite, File source) throws IOException {
+        if (!validName(fileName)) {
             return error("invalidName");
         }
         String shortName = PluginFiles.getPluginShortName(new File(fileName));
@@ -56,12 +60,12 @@ public class PluginUploadService {
         if (!validPackage(source, fileName)) {
             return error("invalidPackage");
         }
-        synchronized (UPLOAD_LOCK) {
+        synchronized (INSTALL_LOCK) {
             return install(shortName, fileName, overwrite, source);
         }
     }
 
-    private PluginApiModels.UploadResponse install(String shortName, String fileName, boolean overwrite, File source)
+    private PluginApiModels.InstallResponse install(String shortName, String fileName, boolean overwrite, File source)
             throws IOException {
         if (bootstrap.isShutdown() || bootstrap.isBootstrapRunning()) {
             return error("busy");
@@ -79,7 +83,7 @@ public class PluginUploadService {
         if (overwritten && !overwrite) {
             return error("alreadyExists");
         }
-        Path staged = Files.createTempFile(directory, ".upload-", ".tmp");
+        Path staged = Files.createTempFile(directory, ".install-", ".tmp");
         Path backup = null;
         boolean installed = false;
         boolean completed = false;
@@ -98,7 +102,7 @@ public class PluginUploadService {
                 return error("registrationFailed");
             }
             completed = true;
-            return PluginApiModels.UploadResponse.success(shortName, fileName, overwritten,
+            return PluginApiModels.InstallResponse.success(shortName, fileName, overwritten,
                     PluginI18n.text("plugin.upload.success"));
         } finally {
             try {
@@ -150,7 +154,7 @@ public class PluginUploadService {
         }
     }
 
-    private static PluginApiModels.UploadResponse error(String key) {
-        return PluginApiModels.UploadResponse.error(PluginI18n.text("plugin.upload.error." + key));
+    private static PluginApiModels.InstallResponse error(String key) {
+        return PluginApiModels.InstallResponse.error(PluginI18n.text("plugin.upload.error." + key));
     }
 }

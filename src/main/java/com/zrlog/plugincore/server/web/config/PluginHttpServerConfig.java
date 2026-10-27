@@ -33,9 +33,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class PluginHttpServerConfig extends AbstractServerConfig {
 
-    // Multipart framing has a separate allowance; uploaded artifacts are capped by PluginUploadService.
+    // Plugin services may forward file payloads. Package installation itself consumes resource URLs.
     static final int MAX_REQUEST_BODY_SIZE =
-            com.zrlog.plugincore.server.runtime.plugin.artifact.PluginUploadService.MAX_FILE_SIZE + 1024 * 1024;
+            com.zrlog.plugincore.server.runtime.plugin.artifact.PluginInstallService.MAX_FILE_SIZE + 1024 * 1024;
     static final int REQUEST_THREADS = 4;
     static final int REQUEST_QUEUE_CAPACITY = 16;
     static final int DECODE_THREADS = 2;

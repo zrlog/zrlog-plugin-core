@@ -5,7 +5,8 @@ import com.zrlog.plugincore.server.util.PluginI18n;
 import com.hibegin.http.annotation.ResponseBody;
 import com.hibegin.http.annotation.RequestMethod;
 import com.hibegin.http.HttpMethod;
-import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginUploadService;
+import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginResourceInstaller;
+import java.util.LinkedHashMap;
 import com.hibegin.http.server.api.HttpRequest;
 import com.hibegin.http.server.api.HttpResponse;
 import com.hibegin.http.server.web.Controller;
@@ -68,10 +69,20 @@ public class PluginApiController extends Controller {
 
     @ResponseBody
     @RequestMethod(method = HttpMethod.POST)
-    public PluginApiModels.UploadResponse upload() throws IOException {
-        return new PluginUploadService().upload(request.getParaToStr("fileName"),
-                Boolean.parseBoolean(request.getParaToStr("overwrite", "false")), request.getFile("file"));
+    public PluginApiModels.InstallResponse install() throws Exception {
+        Map<String, String> credentials = new LinkedHashMap<>();
+        for (String header : Arrays.asList("Cookie", "Authorization")) {
+            if (request.getHeader(header) != null) credentials.put(header, request.getHeader(header));
+        }
+        return new PluginResourceInstaller().install(request.getParaToStr("source"), request.getParaToStr("fileName"),
+                Boolean.parseBoolean(request.getParaToStr("overwrite", "false")), credentials);
     }
+
+    /** Compatibility route; all binary uploads go through the admin resource API. */
+    @Deprecated
+    @ResponseBody
+    @RequestMethod(method = HttpMethod.POST)
+    public PluginApiModels.InstallResponse upload() throws Exception { return install(); }
 
     @ResponseBody
     public PluginApiModels.PluginListResponse plugins() {

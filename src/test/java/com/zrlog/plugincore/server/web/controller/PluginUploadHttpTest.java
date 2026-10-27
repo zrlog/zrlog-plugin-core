@@ -26,7 +26,7 @@ import static org.junit.Assert.*;
 
 public class PluginUploadHttpTest {
     @Test
-    public void decodesMultipartLargerThanFourMiBBeforeCheckingRuntimeAvailability() throws Exception {
+    public void rejectsMultipartInstallWithoutAnAdminResourceAddress() throws Exception {
         PluginRuntimeServices services = PluginRuntimeServices.unconfigured();
         // A stopped runtime lets the request exercise real parsing/validation without launching the fixture JAR.
         services.pluginBootstrap().shutdown();
@@ -51,7 +51,7 @@ public class PluginUploadHttpTest {
             assertEquals(response.body(), 200, response.statusCode());
             var json = JsonParser.parseString(response.body()).getAsJsonObject();
             assertEquals(1, json.get("error").getAsInt());
-            assertTrue(response.body(), json.get("message").getAsString().contains("starting or shutting down"));
+            assertTrue(response.body(), json.get("message").getAsString().contains("admin upload API"));
         } finally {
             server.stop("upload test completed");
             services.shutdown();

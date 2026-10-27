@@ -13,15 +13,21 @@ ZrLog 插件运行时服务。负责插件启动、运行状态、功能注册�
 ## 插件上传
 
 ```shell
-zrlogctl login --permissions plugin.manage
+zrlogctl login --permissions plugin.manage,asset.upload
 zrlogctl plugin upload travel.jar
 zrlogctl plugin upload travel.jar --overwrite
 zrlogctl plugin upload travel-Linux-amd64.bin --overwrite
 ```
 
-通过站点 `POST /api/admin/plugins/upload` 转发到本服务 `POST /api/upload`，需要
-`plugin.manage` 权限。multipart 文件字段为 `file`，查询参数为 `fileName` 和可选的
-`overwrite`（默认 `false`）。接口契约见 [OpenAPI](docs/api/openapi.yaml)。暂不提供上传 UI。
+文件由 admin 的 `POST /api/admin/upload?dir=plugins&temporary=true` 保存。将返回的 `data.url`
+作为 `source`，连同原始包名 `fileName` 和可选的 `overwrite` 提交到
+`POST /api/admin/plugins/install`。在线安装也使用该接口，来源限于 `https://dl.zrlog.com/plugin/`。
+上传需要 `asset.upload`，安装需要 `plugin.manage`；两次请求不依赖同一台机器上的临时文件。
+仅 admin 私有临时资源会收到调用者的凭据，公开下载不带凭据，也不自动跟随重定向。
+
+旧 `POST /api/admin/plugins/upload` multipart 入口由 admin 兼容：先保存资源再调用安装接口，
+因此需要上述两种权限。文件字段仍为 `file`，查询参数为 `fileName` 和可选的 `overwrite`。
+plugin-core 不再提供二进制上传。完整接口见 [OpenAPI](docs/api/openapi.yaml)。
 
 文件最大 64 MiB，JVM 部署使用 `shortName.jar`，原生部署使用与服务端系统、架构一致的
 `shortName-OS-architecture.bin/.exe`。沿用现有插件文件命名，不接收 ZIP 或源码目录。

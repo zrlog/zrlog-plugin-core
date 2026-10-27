@@ -368,7 +368,7 @@ final class NativeRuntimeWarmup {
 
         serializeRoundTrip(gson, new PluginApiModels.EmptyResponse());
         serializeRoundTrip(gson, PluginApiModels.ActionResponse.success("warmup"));
-        serializeRoundTrip(gson, PluginApiModels.UploadResponse.success("comment", "comment.jar", false, "warmup"));
+        serializeRoundTrip(gson, PluginApiModels.InstallResponse.success("comment", "comment.jar", false, "warmup"));
         serializeRoundTrip(gson, pluginListResponse);
         serializeRoundTrip(gson, refreshCacheResponse);
         serializeRoundTrip(gson, new PluginApiModels.StatusResponse(0, "STARTED", Collections.singletonList("comment")));

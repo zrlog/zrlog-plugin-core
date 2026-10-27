@@ -33,6 +33,8 @@ import org.jsoup.nodes.Element;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginResourceInstaller;
+import com.zrlog.plugincore.server.runtime.plugin.artifact.PluginArtifactSource;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -73,21 +75,16 @@ public class PluginController extends Controller {
         if (Objects.isNull(downloadUrl)) {
             return;
         }
-        String fileName = downloadUrl.substring(downloadUrl.lastIndexOf("/") + 1);
-        String pluginShortName = PluginFiles.getPluginShortName(new File(fileName));
+        String pluginShortName = "";
         try {
-            File path = new File(PluginRuntimeBridge.pluginConfig().getPluginBasePath());
-            File file = new File(path + "/" + fileName);
-            if (file.exists()) {
-                if (!pluginBootstrap().startPluginFileForMetadata(file)) {
-                    throw new RuntimeException(PluginI18n.text("plugin.download.metadataTimeout"));
-                }
-                response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(PluginI18n.text("plugin.download.alreadyExists")) +
-                        "&pluginName=" + encodeQuery(pluginShortName));
-                return;
-            }
-            pluginBootstrap().downloadAndStartPlugin(PluginFiles.getPluginFile(pluginShortName).getName());
-            response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(PluginI18n.text("plugin.download.success")) +
+            // Validate the store origin before adapting its filename to this runtime platform.
+            String storeFile = PluginArtifactSource.storeFileName(downloadUrl);
+            pluginShortName = PluginFiles.getPluginShortName(new File(storeFile));
+            String fileName = PluginFiles.getPluginFile(pluginShortName).getName();
+            PluginApiModels.InstallResponse result = new PluginResourceInstaller().install(
+                    "https://dl.zrlog.com/plugin/" + fileName, fileName,
+                    Boolean.parseBoolean(request.getParaToStr("overwrite", "false")), java.util.Collections.emptyMap());
+            response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(result.getMessage()) +
                     "&pluginName=" + encodeQuery(pluginShortName));
         } catch (Exception e) {
             response.redirect("/admin/plugins/downloadResult?message=" + encodeQuery(e.getMessage()) +
@@ -172,7 +169,7 @@ public class PluginController extends Controller {
     }
 
     @com.hibegin.http.annotation.RequestMethod(method = com.hibegin.http.HttpMethod.POST)
-    public void upload() throws IOException {
+    public void upload() throws Exception {
         response.renderJson(new PluginApiController(request, response).upload());
     }
 }
