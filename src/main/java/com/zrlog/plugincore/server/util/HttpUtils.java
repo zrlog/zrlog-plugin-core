@@ -2,6 +2,8 @@ package com.zrlog.plugincore.server.util;
 
 import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
 import com.zrlog.plugin.data.codec.HttpResponseInfo;
+import com.zrlog.plugin.client.HttpClientUtils;
+import com.zrlog.plugin.common.type.HttpMethod;
 
 import java.io.File;
 import java.io.IOException;
@@ -50,6 +52,21 @@ public class HttpUtils {
     }
 
     public static void downloadToFile(String url, Map<String, String> headers, File target, long maxDownloadBytes) throws Exception {
+        downloadToFile(url, headers, target, maxDownloadBytes, false);
+    }
+
+    public static void downloadHttpFile(BaseHttpRequestInfo request, Path target) throws Exception {
+        Long limit = request.getMaxResponseBodyBytes();
+        if (request.getHttpMethod() != HttpMethod.GET || limit == null || limit <= 0
+                || limit > HttpClientUtils.MAX_FILE_DOWNLOAD_BYTES
+                || (request.getRequestBody() != null && request.getRequestBody().length != 0)) {
+            throw new IllegalArgumentException("Invalid HTTP file download request");
+        }
+        downloadToFile(request.getAccessUrl(), request.getHeader(), target.toFile(), limit, true);
+    }
+
+    private static void downloadToFile(String url, Map<String, String> headers, File target,
+                                       long maxDownloadBytes, boolean requireOk) throws Exception {
         Path targetPath = target.toPath();
         Path parent = targetPath.getParent();
         if (parent != null) {
@@ -61,8 +78,9 @@ public class HttpUtils {
         try {
             HttpResponse<Path> response = httpClient.send(getRequest(url, headers, DOWNLOAD_TIMEOUT),
                     limitedBodyHandler(() -> HttpResponse.BodySubscribers.ofFile(tempFile), maxDownloadBytes));
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IOException("Download returned HTTP " + response.statusCode());
+            if (response.statusCode() < 200 || response.statusCode() >= 300
+                    || (requireOk && response.statusCode() != 200)) {
+                throw new HttpDownloadException(response.statusCode());
             }
             try {
                 Files.move(tempFile, targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
@@ -72,6 +90,17 @@ public class HttpUtils {
         } finally {
             Files.deleteIfExists(tempFile);
         }
+    }
+
+    public static final class HttpDownloadException extends IOException {
+        private final int statusCode;
+
+        public HttpDownloadException(int statusCode) {
+            super("Download returned HTTP " + statusCode);
+            this.statusCode = statusCode;
+        }
+
+        public int getStatusCode() { return statusCode; }
     }
 
     private static HttpRequest getRequest(String url, Map<String, String> headers, Duration timeout) throws Exception {
