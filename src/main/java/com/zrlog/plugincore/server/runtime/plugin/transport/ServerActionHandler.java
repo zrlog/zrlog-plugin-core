@@ -13,6 +13,7 @@ import com.zrlog.plugin.common.model.Comment;
 import com.zrlog.plugin.common.model.CreateArticleRequest;
 import com.zrlog.plugin.common.model.TemplatePath;
 import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
+import com.zrlog.plugin.data.codec.ContentType;
 import com.zrlog.plugin.data.codec.HttpResponseInfo;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
@@ -47,6 +48,8 @@ import com.zrlog.plugincore.server.vo.PluginVO;
 import org.jsoup.Jsoup;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -515,11 +518,26 @@ public class ServerActionHandler implements IActionHandler {
                                 PluginRuntimeBridge.hostConnection().getBlogApiHomeUrl(),
                                 PluginRuntimeBridge.hostConnection().getBlogPluginToken());
                     }
-                    HttpResponseInfo httpResponseInfo = HttpUtils.doRequest(httpRequestInfo);
-                    session.sendJsonMsg(httpResponseInfo, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                    if (httpRequestInfo.isResponseBodyAsFile()) {
+                        Path directory = Files.createTempDirectory("zrlog-http-download-");
+                        Path file = directory.resolve("download.bin");
+                        try {
+                            HttpUtils.downloadHttpFile(httpRequestInfo, file);
+                            // Encoding sends the complete FILE before returning; no path is handed to another process.
+                            session.sendMsg(ContentType.FILE, file.toFile(), msgPacket.getMethodStr(),
+                                    msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                        } finally {
+                            Files.deleteIfExists(file);
+                            Files.deleteIfExists(directory);
+                        }
+                    } else {
+                        HttpResponseInfo httpResponseInfo = HttpUtils.doRequest(httpRequestInfo);
+                        session.sendJsonMsg(httpResponseInfo, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+                    }
                 } catch (Exception e) {
                     HttpResponseInfo httpResponseInfo = new HttpResponseInfo();
-                    httpResponseInfo.setStatusCode(500);
+                    httpResponseInfo.setStatusCode(e instanceof HttpUtils.HttpDownloadException
+                            ? ((HttpUtils.HttpDownloadException) e).getStatusCode() : 500);
                     httpResponseInfo.setHeader(new HashMap<>());
                     httpResponseInfo.setResponseBody(LoggerUtil.recordStackTraceMsg(e).getBytes(StandardCharsets.UTF_8));
                     session.sendJsonMsg(httpResponseInfo, msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);

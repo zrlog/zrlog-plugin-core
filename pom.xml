@@ -34,7 +34,7 @@
         <dependency>
             <groupId>com.hibegin</groupId>
             <artifactId>zrlog-plugin-common</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
         </dependency>
         <dependency>
             <groupId>com.hibegin</groupId>
