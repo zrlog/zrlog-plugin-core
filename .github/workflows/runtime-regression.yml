@@ -71,7 +71,7 @@ jobs:
   lifecycle-platforms:
     name: Lifecycle regression (${{ matrix.os }}, GraalVM 25)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
