@@ -10,7 +10,7 @@
     <properties>
         <outputDirectory>${project.build.directory}</outputDirectory>
         <imageName>plugin-core</imageName>
-        <native.maven.plugin.version>0.10.2</native.maven.plugin.version>
+        <native.maven.plugin.version>1.1.6</native.maven.plugin.version>
         <native.image.mainClass>com.zrlog.plugincore.server.Application</native.image.mainClass>
         <native.image.agentMainClass>com.zrlog.plugincore.server.GraalvmAgentApplication</native.image.agentMainClass>
         <java.version>11</java.version>
