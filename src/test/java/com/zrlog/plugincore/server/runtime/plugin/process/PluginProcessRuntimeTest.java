@@ -1,6 +1,13 @@
 package com.zrlog.plugincore.server.runtime.plugin.process;
 
+import com.zrlog.plugin.IOSession;
+import com.zrlog.plugin.api.IActionHandler;
+import com.zrlog.plugin.data.codec.SocketCodec;
+import com.zrlog.plugin.data.codec.SocketDecode;
+import com.zrlog.plugin.data.codec.SocketEncode;
+import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugin.common.model.BlogRunTime;
+import com.zrlog.plugincore.server.runtime.plugin.lifecycle.PluginLifecycleService;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
@@ -16,6 +23,9 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +58,83 @@ public class PluginProcessRuntimeTest {
     @Parameterized.Parameters(name = "{0}")
     public static DatabaseType[] databases() {
         return DatabaseType.values();
+    }
+
+    @Test(timeout = 15000)
+    public void registrationWaitsForManagedProcessIdentityBeforePublishingSession() throws Exception {
+        assertRegistrationDuringSpawn(false);
+    }
+
+    @Test(timeout = 15000)
+    public void registrationRejectsManagedProcessWhoseStartupFailed() throws Exception {
+        assertRegistrationDuringSpawn(true);
+    }
+
+    private void assertRegistrationDuringSpawn(boolean failStartup) throws Exception {
+        Path root = Files.createTempDirectory("plugin-registration-during-spawn");
+        CountDownLatch spawning = new CountDownLatch(1);
+        CountDownLatch finishSpawn = new CountDownLatch(1);
+        CountDownLatch registering = new CountDownLatch(1);
+        CountDownLatch registered = new CountDownLatch(1);
+        AtomicReference<Throwable> startFailure = new AtomicReference<>();
+        AtomicReference<Throwable> registrationFailure = new AtomicReference<>();
+        ControlledProcess process = failStartup ? new ControlledProcess(true) : new ManagedControlledProcess(true);
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType);
+             SocketChannel channel = SocketChannel.open(); Selector selector = Selector.open()) {
+            IOSession session = new IOSession(channel, selector,
+                    new SocketCodec(new SocketEncode(), new SocketDecode(Runnable::run)),
+                    (IActionHandler) Proxy.newProxyInstance(IActionHandler.class.getClassLoader(),
+                            new Class<?>[]{IActionHandler.class}, (proxy, method, args) -> null));
+            Plugin plugin = new Plugin();
+            plugin.setId("plugin-id"); plugin.setShortName("fixture"); session.setPlugin(plugin);
+            TestableProcessRuntime runtime = new TestableProcessRuntime(root, process, false) {
+                @Override Process startPluginProcess(LaunchCommand command) {
+                    spawning.countDown();
+                    try {
+                        if (!finishSpawn.await(5, TimeUnit.SECONDS)) throw new AssertionError("Spawn was not released");
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    }
+                    return process;
+                }
+            };
+            File file = pluginFile(root, "fixture.jar");
+            Thread starter = new Thread(() -> {
+                try { runtime.loadPlugin(file, "plugin-id"); }
+                catch (Throwable error) { startFailure.set(error); }
+            }, "fixture-start");
+            Thread registration = new Thread(() -> {
+                registering.countDown();
+                try { new PluginLifecycleService(runtime).registerPlugin(session); }
+                catch (Throwable error) { registrationFailure.set(error); }
+                finally { registered.countDown(); }
+            }, "fixture-register");
+            try {
+                starter.start(); assertTrue(spawning.await(5, TimeUnit.SECONDS));
+                registration.start(); assertTrue(registering.await(5, TimeUnit.SECONDS));
+                assertFalse("Registration must not publish a session before its managed identity exists",
+                        registered.await(300, TimeUnit.MILLISECONDS));
+                assertTrue(runtime.sessionRegistry().getAllLocalSessions().isEmpty());
+                finishSpawn.countDown(); starter.join(5000); registration.join(5000);
+                assertFalse(starter.isAlive()); assertFalse(registration.isAlive());
+                if (failStartup) {
+                    assertTrue(startFailure.get() instanceof IllegalStateException);
+                    assertTrue(registrationFailure.get() instanceof IllegalStateException);
+                    assertTrue(runtime.sessionRegistry().getAllLocalSessions().isEmpty());
+                } else {
+                    org.junit.Assert.assertNull(startFailure.get());
+                    org.junit.Assert.assertNull(registrationFailure.get());
+                    assertEquals(Long.valueOf(process.pid()), runtime.sessionRegistry().processId(session));
+                    assertEquals(runtime.runtimeInstanceIdByPluginId("plugin-id").orElseThrow(),
+                            runtime.sessionRegistry().runtimeInstanceId(session));
+                    assertTrue(runtime.sessionRegistry().getAllLocalSessions().contains(session));
+                }
+            } finally {
+                finishSpawn.countDown(); starter.join(5000); registration.join(5000);
+                runtime.shutdownProcesses(1000, 100); runtime.sessionRegistry().shutdown();
+            }
+        } finally { delete(root); }
     }
 
     @Test

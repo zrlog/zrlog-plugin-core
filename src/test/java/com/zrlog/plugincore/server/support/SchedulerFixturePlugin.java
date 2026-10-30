@@ -44,6 +44,7 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("view-started.tmp"), new Gson().toJson(request));
             Files.move(directory.resolve("view-started.tmp"), directory.resolve("view-started.json"),
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.writeString(directory.resolve("progress"), "0");
             session.sendMsg(com.zrlog.plugin.data.codec.ContentType.HTML, "<aside>公开插件内容</aside>",
                     packet.getMethodStr(), packet.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS, null);
             Files.writeString(directory.resolve("early-response"), "content sent before handler cleanup");
@@ -87,9 +88,9 @@ public final class SchedulerFixturePlugin implements IPluginAction {
     private static void execute(IOSession session, MsgPacket packet) {
         CapabilityInvokeResult result = new CapabilityInvokeResult();
         boolean replied = false;
+        Path directory = null;
         try {
             CapabilityInvokeRequest request = new Gson().fromJson(packet.getDataStr(), CapabilityInvokeRequest.class);
-            Path directory;
             String mode;
             if ("fixture.cache".equals(request.getCapabilityKey())) {
                 java.util.Properties fixture = new java.util.Properties();
@@ -105,6 +106,7 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("started.tmp"), new Gson().toJson(request));
             Files.move(directory.resolve("started.tmp"), directory.resolve("started.json"),
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.writeString(directory.resolve("progress"), "0");
             if ("early".equals(mode)) {
                 result.setSuccess(true);
                 session.sendJsonMsg(result, packet.getMethodStr(), packet.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
@@ -128,9 +130,17 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("completed"), request.getRequestId());
             result.setSuccess(true);
         } catch (Exception error) {
+            boolean interrupted = Thread.interrupted();
+            try {
+                if (directory != null) Files.writeString(directory.resolve("fixture-failure"),
+                        error.getClass().getName() + ": " + error.getMessage());
+            } catch (java.io.IOException ignored) {
+                // Preserve the original fixture result if diagnostic output is unavailable.
+            } finally {
+                if (interrupted || error instanceof InterruptedException) Thread.currentThread().interrupt();
+            }
             result.setSuccess(false);
             result.setErrorMessage(error.getMessage());
-            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
         }
         if (!replied) session.sendJsonMsg(result, packet.getMethodStr(), packet.getMsgId(),
                 result.isSuccess() ? MsgPacketStatus.RESPONSE_SUCCESS : MsgPacketStatus.RESPONSE_ERROR);
