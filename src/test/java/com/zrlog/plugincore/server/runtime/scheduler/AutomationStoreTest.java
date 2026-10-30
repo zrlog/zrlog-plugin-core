@@ -139,15 +139,22 @@ public class AutomationStoreTest {
 
     @Test
     public void shouldTrimAutomationRuns() {
-        AutomationRunStore store = new AutomationRunStore(new InMemoryRuntimeKvStore());
-        for (int i = 0; i < 501; i++) {
-            PluginAutomationRun run = new PluginAutomationRun();
-            run.setId("run-" + i);
-            store.append(run);
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AutomationRunStore store = new AutomationRunStore(kvStore);
+        AutomationRunDocument initial = new AutomationRunDocument();
+        for (int i = 0; i < 500; i++) {
+            initial.getItems().add(run("run-" + i));
         }
+        // Prepare the retention boundary once; the append is the operation under test.
+        store.saveDocument(initial);
+        store.append(run("run-500"));
 
-        assertEquals(500, store.list().size());
-        assertTrue("run-1".equals(store.list().get(0).getId()));
+        AutomationRunDocument persisted = new Gson().fromJson(
+                kvStore.get(AutomationRunStore.KEY).get(), AutomationRunDocument.class);
+        assertEquals(500, persisted.getItems().size());
+        assertEquals("run-1", persisted.getItems().get(0).getId());
+        assertEquals("run-500", persisted.getItems().get(499).getId());
+        assertEquals(500, new AutomationRunStore(kvStore).list().size());
     }
 
     @Test
