@@ -36,7 +36,7 @@ public class PluginLifecycleService {
                 return;
             }
             closeDuplicatePluginInstances(session);
-            attachProcessInfo(session);
+            processRuntime.attachProcessInfo(session);
             PluginVO pluginVO = new PluginVO();
             pluginVO.setPlugin(session.getPlugin());
             pluginVO.setFileMd5(PluginFiles.pluginFileMd5(PluginFiles.getAvailablePluginFile(session.getPlugin().getShortName())));
@@ -124,19 +124,4 @@ public class PluginLifecycleService {
         }
     }
 
-    private void attachProcessInfo(IOSession session) {
-        try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
-            if (session == null || session.getPlugin() == null) {
-                return;
-            }
-            String pluginId = session.getPlugin().getId();
-            Long processId = processRuntime.processIdByPluginId(pluginId);
-            if (processId == null) {
-                return;
-            }
-            session.getSystemAttr().put(PluginSessionRegistry.PROCESS_ID_ATTR, processId);
-            processRuntime.runtimeInstanceIdByPluginId(pluginId)
-                    .ifPresent(runtimeInstanceId -> session.getSystemAttr().put(PluginSessionRegistry.SESSION_ID_ATTR, runtimeInstanceId));
-        }
-    }
 }

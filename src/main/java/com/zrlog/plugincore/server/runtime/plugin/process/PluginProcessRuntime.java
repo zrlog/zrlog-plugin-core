@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.plugin.process;
 
 import com.hibegin.common.util.EnvKit;
+import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.common.ConfigKit;
 import com.zrlog.plugin.common.LoggerUtil;
 import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
@@ -919,6 +920,34 @@ public class PluginProcessRuntime {
 
     public Optional<String> runtimeInstanceIdByPluginId(String pluginId) {
         return Optional.ofNullable(processRuntimeInstanceIdMap.get(pluginId));
+    }
+
+    public void attachProcessInfo(IOSession session) {
+        if (session == null || session.getPlugin() == null) return;
+        String pluginId = session.getPlugin().getId();
+        ProcessSlot connectingSlot = processMap.get(pluginId);
+        // A child can connect before ProcessBuilder.start() returns to its parent. Join the
+        // existing startup operation before publishing either part of its process identity.
+        if (!lockWithin(processLifecycleLock, RuntimeDeadline.afterMillis(PROCESS_OPERATION_WAIT_MS))) {
+            throw new IllegalStateException("Plugin process initialization did not finish before registration");
+        }
+        try {
+            ProcessSlot currentSlot = processMap.get(pluginId);
+            if (connectingSlot != null && connectingSlot != currentSlot) {
+                throw new IllegalStateException("Plugin process changed before registration");
+            }
+            if (currentSlot == null) return; // Externally started plugins have no managed PID.
+            Long processId = processIdMap.get(pluginId);
+            String runtimeInstanceId = processRuntimeInstanceIdMap.get(pluginId);
+            if (processId == null || runtimeInstanceId == null || currentSlot.process == null
+                    || !currentSlot.process.isAlive()) {
+                throw new IllegalStateException("Plugin process identity is unavailable for registration");
+            }
+            session.getSystemAttr().put(PluginSessionRegistry.PROCESS_ID_ATTR, processId);
+            session.getSystemAttr().put(PluginSessionRegistry.SESSION_ID_ATTR, runtimeInstanceId);
+        } finally {
+            processLifecycleLock.unlock();
+        }
     }
 
     public void markReadyIfCurrent(String pluginId, String runtimeInstanceId, Long processId) {

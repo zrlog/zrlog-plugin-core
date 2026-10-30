@@ -88,14 +88,23 @@ jobs:
           github-token: ${{ github.token }}
       - name: Exercise startup and cancellation on supported runtime platforms
         shell: bash
-        run: ./mvnw -B -ntp -Dtest=PluginRuntimeStateServiceTest,HostSchedulerPluginIntegrationTest test
+        run: ./mvnw -B -ntp -Dtest=PluginRuntimeStateServiceTest,PluginProcessRuntimeTest,HostSchedulerPluginIntegrationTest test
+      - name: Preserve the initial lifecycle regression reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p target/lifecycle-initial
+          cp target/surefire-reports/* target/lifecycle-initial/
       - name: Repeat the cooperative cancellation regression
         shell: bash
         run: |
           for attempt in 1 2 3 4 5; do
-            ./mvnw -B -ntp -Dtest=HostSchedulerPluginIntegrationTest#hostRefreshCancellationWaitsForCleanup test
+            rm -f target/surefire-reports/*
+            result=0
+            ./mvnw -B -ntp -Dtest=HostSchedulerPluginIntegrationTest#hostRefreshCancellationWaitsForCleanup test || result=$?
             mkdir -p "target/lifecycle-repetitions/run-${attempt}"
             cp target/surefire-reports/* "target/lifecycle-repetitions/run-${attempt}/"
+            if [ "$result" -ne 0 ]; then exit "$result"; fi
           done
       - uses: actions/upload-artifact@v6
         if: always()
@@ -103,6 +112,7 @@ jobs:
           name: core-lifecycle-${{ matrix.os }}
           path: |
             target/surefire-reports
+            target/lifecycle-initial
             target/lifecycle-repetitions
 
   native:
