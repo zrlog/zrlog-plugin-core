@@ -38,7 +38,7 @@ class ApplicationStartup {
         PluginConfig pluginConfig = new PluginConfig(RunConstants.runType, options.getDbProperties(), options.getMasterPort(),
                 options.getPluginPath(), options.getBlogRunTime());
         PluginHostConnection hostConnection = new PluginHostConnection(options.getBlogApiHomeUrl(),
-                options.getBlogPluginToken(), options.getNativeInfo(), options.getContextPath());
+                options.getBlogPluginToken(), options.getNativeInfo(), options.getContextPath(), options.isHostSchedulerDriven());
         PluginRuntimeServices services = PluginRuntimeServices.create(pluginConfig, hostConnection);
         new PluginDataSourceInitializer().initialize(pluginConfig.getDbPropertiesFile());
         // The host treats the watcher connection as a live Runtime. Do not

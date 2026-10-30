@@ -7,6 +7,7 @@ import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.util.HttpUtils;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.util.StringUtils;
 
 import java.io.File;
@@ -140,6 +141,23 @@ public final class PluginFiles {
         }
     }
 
+    public static File ensurePluginFile(String pluginShortName, boolean autoDownloadDisabled,
+                                       RuntimeDeadline deadline) {
+        deadline.check();
+        File file = getAvailablePluginFile(pluginShortName);
+        if (file.exists() && file.length() > 0 || autoDownloadDisabled) return file;
+        try {
+            return downloadPluginByUrl("https://dl.zrlog.com/plugin/" + file.getName()
+                    + "?v=" + System.currentTimeMillis(), file.getName(), deadline);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeDeadline.Expired();
+        } catch (Exception failure) {
+            deadline.check();
+            throw new IllegalStateException("Plugin download failed: " + file.getName(), failure);
+        }
+    }
+
     private static boolean isAutoDownloadLostFileDisabled() {
         return !PluginCoreDAO.getInstance().loadSnapshot().getSetting().isAutoDownloadMissingPluginFileEnabled();
     }
@@ -157,13 +175,18 @@ public final class PluginFiles {
     }
 
     private static File downloadPluginByUrl(String url, String fileName) throws Exception {
+        return downloadPluginByUrl(url, fileName, RuntimeDeadline.afterMillis(600000));
+    }
+
+    private static File downloadPluginByUrl(String url, String fileName, RuntimeDeadline deadline) throws Exception {
+        deadline.check();
         LOGGER.info("download plugin " + fileName + " from " + url);
         File downloadFile = downloadPluginFile(fileName);
         File parentFile = downloadFile.getParentFile();
         if (parentFile != null) {
             parentFile.mkdirs();
         }
-        HttpUtils.downloadToFile(url, new HashMap<>(), downloadFile);
+        HttpUtils.downloadToFile(url, new HashMap<>(), downloadFile, 256L * 1024 * 1024, deadline);
         if (downloadFile.length() == 0) {
             throw new RuntimeException("Download error");
         }

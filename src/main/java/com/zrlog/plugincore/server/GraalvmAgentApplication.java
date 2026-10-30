@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server;
 
+import com.zrlog.plugin.message.CapabilityCancelResult;
+import com.zrlog.plugin.message.CapabilityCancelRequest;
 import com.zrlog.plugin.RunConstants;
 import com.zrlog.plugin.type.RunType;
 import com.hibegin.common.util.Pid;
@@ -67,7 +69,9 @@ public class GraalvmAgentApplication {
         PathUtil.setRootPath(basePath);
         File file = new File(basePath + "/src/main/resources");
         PluginNativeImageUtils.doLoopResourceLoad(file.listFiles(), file.getPath() + "/", "/");
-        Application.main(args);
+        // Sampling must not contend with a developer's running Core on the default ports.
+        // Ephemeral ports still exercise the production Socket and HTTP initialization.
+        Application.main(args == null || args.length == 0 ? new String[]{"0", "0"} : args);
     }
 
     static List<Class<?>> runtimeGsonClasses() {
@@ -78,10 +82,14 @@ public class GraalvmAgentApplication {
                 Plugin.class,
                 PluginCapability.class,
                 CapabilityDocument.class,
+                CapabilityCancelRequest.class,
+                CapabilityCancelResult.class,
                 CapabilityInvokeRequest.class,
                 CapabilityInvokeResult.class,
                 RuntimeEventRequest.class,
                 RuntimeEventPublishResult.class,
+                com.zrlog.plugincore.server.runtime.event.HostCacheRefreshResult.class,
+                com.zrlog.plugincore.server.runtime.event.HostViewResult.class,
                 CapabilityInvocationLog.class,
                 InvocationLogDocument.class,
                 PluginAutomation.class,

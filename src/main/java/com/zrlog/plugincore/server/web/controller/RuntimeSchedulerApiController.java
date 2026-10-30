@@ -8,6 +8,15 @@ import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.runtime.capability.RuntimeSources;
+import com.zrlog.plugincore.server.runtime.capability.CapabilityStore;
+import com.zrlog.plugincore.server.runtime.capability.RuntimeCapabilityInvokerFactory;
+import com.zrlog.plugincore.server.runtime.event.HostCacheRefreshResult;
+import com.zrlog.plugincore.server.runtime.event.HostCacheRefreshRuntime;
+import com.zrlog.plugincore.server.runtime.event.RuntimeEventHandlerResolver;
+import com.zrlog.plugincore.server.runtime.event.RuntimeEventRuntime;
+import com.zrlog.plugincore.server.runtime.invocation.InvocationLogStore;
+import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessions;
+import com.zrlog.plugincore.server.runtime.store.WebsiteRuntimeKvStore;
 import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomation;
 import com.zrlog.plugincore.server.runtime.scheduler.PluginAutomationRun;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerExternalEndpoint;
@@ -53,6 +62,8 @@ public class RuntimeSchedulerApiController extends RuntimeBaseApiController {
         String fallbackHomeUrl = schedulerFallbackHomeUrl(request);
         SchedulerSettingsResponse response = new SchedulerSettingsResponse();
         response.setEnabled(setting.getEnabled());
+        response.setHostDriven(setting.getHostDriven()
+                || com.zrlog.plugincore.server.runtime.PluginRuntimeBridge.hostConnection().isHostSchedulerDriven());
         response.setExternalHost(setting.getExternalHost());
         response.setEffectiveExternalHost(SchedulerExternalEndpoint.effectiveHost(setting.getExternalHost(), fallbackHomeUrl));
         response.setExternalTickPath(SchedulerExternalEndpoint.EXTERNAL_TICK_EXPOSE_PATH);
@@ -100,6 +111,91 @@ public class RuntimeSchedulerApiController extends RuntimeBaseApiController {
     }
 
     @ResponseBody
+    public SchedulerTickResult hostSchedulerTick() {
+        long budgetMillis;
+        int actorId;
+        String triggerId = getRequest().getHeader("X-ZrLog-Trigger-Id");
+        try {
+            budgetMillis = Long.parseLong(getRequest().getHeader("X-ZrLog-Budget-Millis"));
+            actorId = Integer.parseInt(getRequest().getHeader("X-ZrLog-Actor-Id"));
+            if (budgetMillis < 1000 || budgetMillis > 645000 || actorId < 1
+                    || triggerId == null || !triggerId.matches("[a-zA-Z0-9_.-]{1,128}")) {
+                throw new IllegalArgumentException();
+            }
+        } catch (RuntimeException invalid) {
+            getResponse().renderCode(400);
+            return null;
+        }
+        return schedulerTickService(PluginCoreDAO.getInstance().loadSnapshot())
+                .tickFromHost(ZonedDateTime.now(), triggerId, actorId, budgetMillis);
+    }
+
+    @ResponseBody
+    public HostCacheRefreshResult hostRefreshCache() {
+        long budget;
+        int actor;
+        String trigger = getRequest().getHeader("X-ZrLog-Trigger-Id");
+        String version = getRequest().getHeader("X-ZrLog-Cache-Version");
+        try {
+            budget = Long.parseLong(getRequest().getHeader("X-ZrLog-Budget-Millis"));
+            actor = Integer.parseInt(getRequest().getHeader("X-ZrLog-Actor-Id"));
+            if (budget < 1000 || budget > 645000 || actor < 1 || trigger == null
+                    || !trigger.matches("[a-zA-Z0-9_.-]{1,128}") || version == null
+                    || !version.matches("[a-zA-Z0-9_.-]{1,128}")) throw new IllegalArgumentException();
+        } catch (RuntimeException invalid) {
+            getResponse().renderCode(400);
+            return null;
+        }
+        var store = new WebsiteRuntimeKvStore();
+        var events = new RuntimeEventRuntime(new CapabilityStore(store), new RuntimeEventHandlerResolver(),
+                RuntimeCapabilityInvokerFactory.socket(store));
+        return new HostCacheRefreshRuntime(events, PluginSessions::getAllLocalSessions, new InvocationLogStore(store))
+                .refresh(trigger, actor, version, budget);
+    }
+
+    @ResponseBody
+    public com.zrlog.plugincore.server.runtime.event.HostViewResult hostRenderView() {
+        String trigger = request.getHeader("X-ZrLog-Trigger-Id"), invocation = request.getHeader("X-ZrLog-Request-Id");
+        String name = request.getHeader("X-ZrLog-Plugin-Name"), path;
+        int actor;
+        long millis;
+        try {
+            actor = Integer.parseInt(request.getHeader("X-ZrLog-Actor-Id"));
+            millis = Long.parseLong(request.getHeader("X-ZrLog-Budget-Millis"));
+            java.net.URI uri = java.net.URI.create(request.getHeader("X-ZrLog-View-Path"));
+            path = uri.getPath();
+            if (actor < 1 || millis < 1000 || millis > 645000 || trigger == null || invocation == null
+                    || !trigger.matches("[a-zA-Z0-9_.-]{1,128}") || !invocation.matches("[a-zA-Z0-9_.-]{1,128}")
+                    || name == null || !name.matches("[a-zA-Z0-9_-]{1,128}") || uri.isAbsolute() || uri.getRawAuthority() != null
+                    || uri.getRawQuery() != null || uri.getRawFragment() != null
+                    || !com.zrlog.plugincore.server.runtime.event.HostViewRuntime.validPath(path)
+                    || request.getQueryStr() != null && request.getQueryStr().length() > 8192)
+                throw new IllegalArgumentException();
+        } catch (RuntimeException invalid) { response.renderCode(400); return null; }
+        var deadline = com.zrlog.plugincore.server.runtime.util.RuntimeDeadline.afterMillis(millis);
+        var view = new com.zrlog.plugin.data.codec.HttpRequestInfo();
+        view.setUri(path); view.setParam(request.decodeParamMap());
+        Map<String, String> headers = new java.util.LinkedHashMap<>();
+        for (String key : List.of("User-Agent", "Blog-Version", "Current-Locale", "AccessUrl", "Full-Url",
+                "Dark-Mode", "Admin-Theme", "Admin-Compact-Mode", "Admin-Color-Primary")) {
+            String value = request.getHeader("User-Agent".equals(key) ? "X-ZrLog-View-User-Agent" : key);
+            if (value != null) headers.put(key, value);
+        }
+        headers.put("IsLogin", "false"); view.setHeader(headers);
+        view.setFullUrl(headers.get("Full-Url")); view.setAccessUrl(headers.get("AccessUrl")); view.setVersion(headers.get("Blog-Version"));
+        com.zrlog.plugincore.server.util.AdminTheme.fromHeaders(headers, null).applyTo(view);
+        var store = new WebsiteRuntimeKvStore();
+        var states = new com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService(
+                new com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore(store),
+                new com.zrlog.plugincore.server.runtime.state.DefaultPluginRuntimeStarter());
+        return new com.zrlog.plugincore.server.runtime.event.HostViewRuntime(pluginName -> {
+            var plugin = PluginCoreDAO.getInstance().getPluginVOByShortName(pluginName);
+            return plugin == null ? null : plugin.getPlugin();
+        }, states, new com.zrlog.plugincore.server.runtime.capability.SocketCapabilityInvoker(), new InvocationLogStore(store))
+                .render(name, view, trigger, invocation, actor, deadline);
+    }
+
+    @ResponseBody
     public Response schedulerTick() {
         try {
             SchedulerTickResult result = schedulerTickService(PluginCoreDAO.getInstance().loadSnapshot())
@@ -120,7 +216,9 @@ public class RuntimeSchedulerApiController extends RuntimeBaseApiController {
     private Response saveAutomation() {
         try {
             PluginAutomation automation = readAutomation();
-            PluginAutomation saved = automationService().save(automation, null);
+            PluginAutomation saved = automationService().save(automation, null,
+                    Boolean.TRUE.equals(getRequest().getParaToBool("reviewConfirmed"))
+                            ? getRequest().getParaToStr("reviewRunId") : null);
             List<PluginCapability> capabilities = capabilityStore().listAll();
             return new ItemResponse<AutomationResponse>(automationResponse(saved, pluginsById(), capabilitiesByKey(capabilities)));
         } catch (RuntimeException e) {

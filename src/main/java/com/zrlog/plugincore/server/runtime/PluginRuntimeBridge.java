@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
+import com.zrlog.plugin.IOSession;
 import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginBootstrapService;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginHostConnection;
@@ -33,6 +35,11 @@ public final class PluginRuntimeBridge {
 
     public static PluginHostConnection hostConnection() {
         return current.hostConnection();
+    }
+
+    public static boolean stopInvocationProcess(IOSession session,
+                                                RuntimeDeadline deadline) {
+        return current.stopInvocationProcess(session, deadline);
     }
 
     public static PluginStartCoordinator pluginStarts() {

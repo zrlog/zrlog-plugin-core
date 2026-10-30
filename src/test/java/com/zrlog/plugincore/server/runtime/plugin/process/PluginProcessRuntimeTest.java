@@ -4,6 +4,7 @@ import com.zrlog.plugin.common.model.BlogRunTime;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.runtime.plugin.session.PluginSessionRegistry;
 import com.zrlog.plugincore.server.runtime.state.PluginStartCoordinator;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.DatabaseType;
 import org.junit.Test;
@@ -18,6 +19,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -46,6 +48,147 @@ public class PluginProcessRuntimeTest {
     @Parameterized.Parameters(name = "{0}")
     public static DatabaseType[] databases() {
         return DatabaseType.values();
+    }
+
+    @Test
+    public void shouldLaunchExecutablePluginWithoutChangingPermissions() throws Exception {
+        Path root = Files.createTempDirectory("plugin-executable-permissions");
+        try {
+            org.junit.Assume.assumeTrue(Files.getFileStore(root).supportsFileAttributeView("posix"));
+            File plugin = pluginFile(root, "fixture-Linux-amd64.bin");
+            var permissions = PosixFilePermissions.fromString("r-x------");
+            Files.setPosixFilePermissions(plugin.toPath(), permissions);
+            ManagedControlledProcess process = new ManagedControlledProcess(true);
+            try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+                TestableProcessRuntime runtime = new TestableProcessRuntime(root, process, false);
+                try {
+                    org.junit.Assert.assertSame(process, runtime.loadPlugin(plugin, "plugin-id"));
+                    assertEquals(permissions, Files.getPosixFilePermissions(plugin.toPath()));
+                } finally {
+                    runtime.shutdownProcesses(1000, 100);
+                }
+            }
+        } finally {
+            delete(root);
+        }
+    }
+
+    @Test
+    public void invocationStopChecksBothProcessAndRuntimeIdentity() throws Exception {
+        Path root = Files.createTempDirectory("plugin-invocation-stop");
+        ManagedControlledProcess process = new ManagedControlledProcess(true);
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+            TestableProcessRuntime runtime = new TestableProcessRuntime(root, process, false);
+            try {
+                runtime.loadPlugin(pluginFile(root, "fixture.jar"), "plugin-id");
+                String identity = runtime.runtimeInstanceIdByPluginId("plugin-id").orElseThrow();
+                assertFalse(runtime.destroyByRuntimeIdentity("plugin-id", "fixture", "old-runtime", process.pid(), RuntimeDeadline.afterMillis(100)));
+                assertFalse(runtime.destroyByRuntimeIdentity("plugin-id", "fixture", identity, process.pid() + 1, RuntimeDeadline.afterMillis(100)));
+                assertFalse(runtime.destroyByRuntimeIdentity("plugin-id", "other-plugin", identity, process.pid(), RuntimeDeadline.afterMillis(100)));
+                assertTrue(process.isAlive()); assertEquals(0, process.destroyCallCount());
+                assertTrue(runtime.destroyByRuntimeIdentity("plugin-id", "fixture", identity, process.pid(), RuntimeDeadline.afterMillis(1000)));
+                assertFalse(process.isAlive()); assertFalse(runtime.hasManagedProcessSlot("plugin-id", "fixture"));
+            } finally { runtime.shutdownProcesses(1000, 100); }
+        } finally { delete(root); }
+    }
+
+    @Test
+    public void invocationStopKeepsUnterminatedProcessReserved() throws Exception {
+        Path root = Files.createTempDirectory("plugin-invocation-survivor");
+        ManagedControlledProcess process = new ManagedControlledProcess(false);
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+            TestableProcessRuntime runtime = new TestableProcessRuntime(root, process, false);
+            try {
+                runtime.loadPlugin(pluginFile(root, "fixture.jar"), "plugin-id");
+                String identity = runtime.runtimeInstanceIdByPluginId("plugin-id").orElseThrow();
+                assertFalse(runtime.destroyByRuntimeIdentity("plugin-id", "fixture", identity, process.pid(), RuntimeDeadline.afterMillis(100)));
+                assertTrue(process.isAlive()); assertEquals(2, process.destroyCallCount());
+                assertTrue(runtime.hasManagedProcessSlot("plugin-id", "fixture"));
+                assertEquals(identity, runtime.runtimeInstanceIdByPluginId("plugin-id").orElseThrow());
+            } finally { process.markExited(); runtime.shutdownProcesses(1000, 100); }
+        } finally { delete(root); }
+    }
+
+    @Test(timeout = 5000)
+    public void deadlineStopsWaitingForProcessLifecycleWithoutSpawning() throws Exception {
+        Path pluginRoot = Files.createTempDirectory("plugin-process-budget-lock");
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger spawned = new AtomicInteger();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+            ManagedControlledProcess process = new ManagedControlledProcess(true);
+            TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false) {
+                @Override
+                Process startPluginProcess(LaunchCommand command) {
+                    spawned.incrementAndGet();
+                    entered.countDown();
+                    try {
+                        release.await();
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeDeadline.Expired();
+                    }
+                    return process;
+                }
+            };
+            File first = pluginFile(pluginRoot, "first.jar");
+            File second = pluginFile(pluginRoot, "second.jar");
+            Thread owner = new Thread(() -> {
+                try {
+                    runtime.loadPlugin(first, "first");
+                } catch (Throwable error) {
+                    failure.set(error);
+                }
+            });
+            try {
+                owner.start();
+                assertTrue(entered.await(1, TimeUnit.SECONDS));
+                long startedAt = System.nanoTime();
+                try {
+                    runtime.loadPlugin(second, "second", RuntimeDeadline.afterMillis(150));
+                    org.junit.Assert.fail("busy lifecycle must exhaust the caller's budget");
+                } catch (RuntimeDeadline.Expired expected) {
+                    assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1000);
+                }
+                assertEquals(1, spawned.get());
+                assertFalse(runtime.hasManagedProcessSlot("second", "second"));
+            } finally {
+                release.countDown();
+                owner.join(1000);
+                runtime.shutdownProcesses(1000, 100);
+            }
+            assertFalse(owner.isAlive());
+            org.junit.Assert.assertNull(failure.get());
+        } finally {
+            delete(pluginRoot);
+        }
+    }
+
+    @Test(timeout = 3000)
+    public void failedProcessInitializationUsesRemainingCleanupBudget() throws Exception {
+        Path pluginRoot = Files.createTempDirectory("plugin-process-budget-cleanup");
+        SlowWaitProcess process = new SlowWaitProcess();
+        try (InMemoryPluginCoreDatabase ignored = InMemoryPluginCoreDatabase.open(databaseType)) {
+            TestableProcessRuntime runtime = new TestableProcessRuntime(pluginRoot, process, false);
+            try {
+                long startedAt = System.nanoTime();
+                try {
+                    runtime.loadPlugin(pluginFile(pluginRoot, "broken.jar"), "broken", RuntimeDeadline.afterMillis(150));
+                    org.junit.Assert.fail("Expected pid failure after spawn");
+                } catch (IllegalStateException expected) {
+                    assertEquals("simulated pid failure", expected.getMessage());
+                }
+                assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1000);
+                assertEquals(2, process.destroyCallCount());
+                assertTrue("retain ownership while the process is still alive", runtime.hasManagedProcessSlot("broken", "broken"));
+            } finally {
+                process.markExited();
+                runtime.shutdownProcesses(1000, 100);
+            }
+        } finally {
+            delete(pluginRoot);
+        }
     }
 
     @Test

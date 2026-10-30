@@ -82,8 +82,15 @@ public class PluginHttpServerConfig extends AbstractServerConfig {
         serverConfig.setTimeout(REQUEST_TIMEOUT_SECONDS);
         serverConfig.setHybridStorage(new HybridStorage(REQUEST_STORAGE_MEMORY_THRESHOLD, PathUtil.getTempPath()));
         serverConfig.getInterceptors().add(PluginInterceptor.class);
+        serverConfig.getInterceptors().add(HostSchedulerInterceptor.class);
         serverConfig.getInterceptors().add(MethodInterceptor.class);
         serverConfig.addErrorHandle(404, new PluginHandle());
+        serverConfig.getRouter().addMapper(HostSchedulerInterceptor.PREFIX + "/tick",
+                RuntimeSchedulerApiController.class, "hostSchedulerTick");
+        serverConfig.getRouter().addMapper(HostSchedulerInterceptor.PREFIX + "/refresh-cache",
+                RuntimeSchedulerApiController.class, "hostRefreshCache");
+        serverConfig.getRouter().addMapper(HostSchedulerInterceptor.PREFIX + "/render-view",
+                RuntimeSchedulerApiController.class, "hostRenderView");
         //open
         serverConfig.getRouter().addMapper(SchedulerExternalEndpoint.EXTERNAL_TICK_EXPOSE_PATH, SchedulerController.class, "tick");
         //真实访问路由

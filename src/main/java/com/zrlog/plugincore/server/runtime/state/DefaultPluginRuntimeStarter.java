@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.state;
 
 import com.zrlog.plugincore.server.model.PluginCore;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.vo.PluginVO;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginBootstrapService;
@@ -74,14 +75,24 @@ public class DefaultPluginRuntimeStarter implements PluginRuntimeStarter {
 
     @Override
     public void start(PluginIdentity identity) {
+        start(identity, RuntimeDeadline.unlimited());
+    }
+
+    @Override
+    public void start(PluginIdentity identity, RuntimeDeadline deadline) {
+        deadline.check();
         try (PluginLogContext.Scope ignored = PluginLogContext.open(identity.getPluginId(),
                 identity.getPluginShortName(), identity.getPluginName())) {
             boolean autoDownloadDisabled = !pluginCore().getSetting().isAutoDownloadMissingPluginFileEnabled();
-            File pluginFile = PluginFiles.ensurePluginFile(identity.getPluginShortName(), autoDownloadDisabled);
+            File pluginFile = deadline.isBounded()
+                    ? PluginFiles.ensurePluginFile(identity.getPluginShortName(), autoDownloadDisabled, deadline)
+                    : PluginFiles.ensurePluginFile(identity.getPluginShortName(), autoDownloadDisabled);
             if (pluginFile == null || !pluginFile.exists() || pluginFile.length() == 0) {
                 throw new RuntimeException(PluginFiles.missingPluginFileMessage(identity.getPluginShortName(), autoDownloadDisabled));
             }
-            pluginBootstrapService.loadPlugin(pluginFile, identity.getPluginId());
+            deadline.check();
+            pluginBootstrapService.loadPlugin(pluginFile, identity.getPluginId(), deadline);
+            deadline.check();
         }
     }
 
@@ -123,6 +134,19 @@ public class DefaultPluginRuntimeStarter implements PluginRuntimeStarter {
         }
         return new PluginIdleStopRunner(pluginBootstrapService).reclaimOneIdlePluginForCapacity(
                 System.currentTimeMillis(), runtimeSetting, pluginCore, identity.getPluginId());
+    }
+
+    @Override
+    public boolean reclaimIdleCapacity(PluginIdentity identity, RuntimeDeadline deadline) {
+        deadline.check();
+        PluginCore core = pluginCore();
+        return new PluginIdleStopRunner(pluginBootstrapService).reclaimOneIdlePluginForCapacity(
+                System.currentTimeMillis(), core.getSetting().getRuntime(), core, identity.getPluginId(), deadline);
+    }
+
+    @Override
+    public void cleanupStartFailure(PluginIdentity identity, RuntimeDeadline deadline) {
+        pluginBootstrapService.stopPlugin(identity.getPluginId(), identity.getPluginShortName(), deadline);
     }
 
     @Override

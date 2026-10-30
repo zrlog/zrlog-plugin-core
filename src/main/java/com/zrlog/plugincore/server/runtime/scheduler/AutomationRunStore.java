@@ -16,7 +16,8 @@ public class AutomationRunStore {
 
     public static final String KEY = "plugin.runtime.automationRuns.v2";
     private static final int MAX_ITEMS = 500;
-    private static final int STORE_UPDATE_RETRIES = 3;
+    private static final int STORE_UPDATE_RETRIES = 16;
+    private static final int MAX_RUNNING_ITEMS = 128;
 
     private final KvRepository kvStore;
     private final Gson gson = new Gson();
@@ -29,7 +30,55 @@ public class AutomationRunStore {
         return loadDocument().getItems();
     }
 
-    public void append(PluginAutomationRun run) {
+    public Optional<PluginAutomationRun> find(String id) {
+        return list().stream().filter(run -> Objects.equals(id, run.getId())).findFirst();
+    }
+
+    /** The durable running record must exist before invoking a plugin.
+     * The monitor reduces contention between this tick's workers; CAS remains the cross-process guard. */
+    public synchronized void begin(PluginAutomationRun run) {
+        if (run.getId() == null || !"running".equals(run.getStatus())) {
+            throw new IllegalArgumentException("A running automation record requires an id");
+        }
+        for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
+            AutomationRunDocumentSnapshot snapshot = loadSnapshot();
+            List<PluginAutomationRun> items = snapshot.getDocument().getItems();
+            if (items.stream().anyMatch(item -> Objects.equals(run.getId(), item.getId()))) {
+                throw new IllegalStateException("Automation run already exists");
+            }
+            if (items.stream().filter(AutomationRunStore::isRunning).count() >= MAX_RUNNING_ITEMS) {
+                throw new IllegalStateException("Too many unfinished automation runs");
+            }
+            items.add(run);
+            if (saveDocumentIfUnchanged(snapshot)) return;
+        }
+        throw new IllegalStateException("Unable to persist automation run before execution");
+    }
+
+    /** A late worker cannot overwrite recovery's terminal outcome. */
+    public synchronized boolean complete(PluginAutomationRun run) {
+        if (run.getId() == null || isRunning(run)) {
+            throw new IllegalArgumentException("A completed automation record requires an id and result");
+        }
+        for (int attempt = 0; attempt < STORE_UPDATE_RETRIES; attempt++) {
+            AutomationRunDocumentSnapshot snapshot = loadSnapshot();
+            List<PluginAutomationRun> items = snapshot.getDocument().getItems();
+            for (int i = 0; i < items.size(); i++) {
+                if (!Objects.equals(run.getId(), items.get(i).getId())) continue;
+                if (!isRunning(items.get(i))) return false;
+                items.set(i, run);
+                if (saveDocumentIfUnchanged(snapshot)) return true;
+                break;
+            }
+        }
+        throw new IllegalStateException("Unable to persist automation result");
+    }
+
+    private static boolean isRunning(PluginAutomationRun run) {
+        return "running".equals(run.getStatus());
+    }
+
+    public synchronized void append(PluginAutomationRun run) {
         for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
             AutomationRunDocumentSnapshot snapshot = loadSnapshot();
             snapshot.getDocument().setItems(appendItems(snapshot.getDocument().getItems(), run));
@@ -37,15 +86,13 @@ public class AutomationRunStore {
                 return;
             }
         }
+        throw new IllegalStateException("Unable to append automation result");
     }
 
     private List<PluginAutomationRun> appendItems(List<PluginAutomationRun> currentItems, PluginAutomationRun run) {
         List<PluginAutomationRun> items = new ArrayList<>(currentItems);
         normalizeRun(run);
         items.add(run);
-        while (items.size() > MAX_ITEMS) {
-            items.remove(0);
-        }
         return items;
     }
 
@@ -106,16 +153,18 @@ public class AutomationRunStore {
             document.setItems(new ArrayList<>());
             return document;
         }
-        int fromIndex = Math.max(0, currentItems.size() - MAX_ITEMS);
-        List<PluginAutomationRun> items = new ArrayList<>(currentItems.size() - fromIndex);
-        for (int i = fromIndex; i < currentItems.size(); i++) {
+        List<PluginAutomationRun> items = new ArrayList<>();
+        int completed = 0;
+        for (int i = currentItems.size() - 1; i >= 0; i--) {
             PluginAutomationRun run = currentItems.get(i);
             if (run == null) {
                 continue;
             }
+            if (!isRunning(run) && ++completed > MAX_ITEMS) continue;
             normalizeRun(run);
             items.add(run);
         }
+        java.util.Collections.reverse(items);
         document.setItems(items);
         return document;
     }

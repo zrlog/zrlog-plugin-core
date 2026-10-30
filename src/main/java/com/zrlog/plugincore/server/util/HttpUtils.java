@@ -4,6 +4,7 @@ import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
 import com.zrlog.plugin.data.codec.HttpResponseInfo;
 import com.zrlog.plugin.client.HttpClientUtils;
 import com.zrlog.plugin.common.type.HttpMethod;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 
 import java.io.File;
 import java.io.IOException;
@@ -11,6 +12,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,7 +23,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Flow;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 public class HttpUtils {
@@ -52,7 +59,7 @@ public class HttpUtils {
     }
 
     public static void downloadToFile(String url, Map<String, String> headers, File target, long maxDownloadBytes) throws Exception {
-        downloadToFile(url, headers, target, maxDownloadBytes, false);
+        downloadToFile(url, headers, target, maxDownloadBytes, RuntimeDeadline.afterMillis(DOWNLOAD_TIMEOUT.toMillis()));
     }
 
     public static void downloadHttpFile(BaseHttpRequestInfo request, Path target) throws Exception {
@@ -62,11 +69,21 @@ public class HttpUtils {
                 || (request.getRequestBody() != null && request.getRequestBody().length != 0)) {
             throw new IllegalArgumentException("Invalid HTTP file download request");
         }
-        downloadToFile(request.getAccessUrl(), request.getHeader(), target.toFile(), limit, true);
+        downloadToFile(request.getAccessUrl(), request.getHeader(), target.toFile(), limit,
+                RuntimeDeadline.afterMillis(DOWNLOAD_TIMEOUT.toMillis()), true);
+    }
+
+    public static void downloadToFile(String url, Map<String, String> headers, File target,
+                                      long maxDownloadBytes, RuntimeDeadline deadline) throws Exception {
+        downloadToFile(url, headers, target, maxDownloadBytes, deadline, false);
     }
 
     private static void downloadToFile(String url, Map<String, String> headers, File target,
-                                       long maxDownloadBytes, boolean requireOk) throws Exception {
+                                      long maxDownloadBytes, RuntimeDeadline deadline, boolean requireOk) throws Exception {
+        deadline.check();
+        if (maxDownloadBytes <= 0) {
+            throw new IllegalArgumentException("maxBytes must be greater than zero");
+        }
         Path targetPath = target.toPath();
         Path parent = targetPath.getParent();
         if (parent != null) {
@@ -76,8 +93,29 @@ public class HttpUtils {
                 ? Files.createTempFile(target.getName(), ".download")
                 : Files.createTempFile(parent, target.getName(), ".download");
         try {
-            HttpResponse<Path> response = httpClient.send(getRequest(url, headers, DOWNLOAD_TIMEOUT),
-                    limitedBodyHandler(() -> HttpResponse.BodySubscribers.ofFile(tempFile), maxDownloadBytes));
+            DownloadBody body = new DownloadBody(tempFile, maxDownloadBytes, deadline);
+            CompletableFuture<HttpResponse<Path>> transfer = null;
+            HttpResponse<Path> response;
+            try {
+                deadline.check();
+                long requestMillis = deadline.waitMillis(DOWNLOAD_TIMEOUT.toMillis());
+                if (requestMillis == 0) throw new RuntimeDeadline.Expired();
+                transfer = httpClient.sendAsync(getRequest(url, headers, Duration.ofMillis(requestMillis)), body);
+                response = transfer.get(deadline.waitMillis(DOWNLOAD_TIMEOUT.toMillis()), TimeUnit.MILLISECONDS);
+                deadline.check();
+            } catch (Exception failure) {
+                // Close the file subscriber before deleting the temporary file; no late body write may recreate it.
+                body.cancel(failure);
+                if (transfer != null) transfer.cancel(true);
+                if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
+                if (failure instanceof ExecutionException && failure.getCause() instanceof Exception) {
+                    failure = (Exception) failure.getCause();
+                }
+                if (failure instanceof TimeoutException || failure instanceof RuntimeDeadline.Expired) {
+                    throw new HttpTimeoutException("Plugin download time budget exhausted");
+                }
+                throw failure;
+            }
             if (response.statusCode() < 200 || response.statusCode() >= 300
                     || (requireOk && response.statusCode() != 200)) {
                 throw new HttpDownloadException(response.statusCode());
@@ -148,6 +186,33 @@ public class HttpUtils {
         return responseInfo -> new LimitedBodySubscriber<T>(factory.get(), maxBytes);
     }
 
+    private static final class DownloadBody implements HttpResponse.BodyHandler<Path> {
+        private final Path file;
+        private final long maxBytes;
+        private final RuntimeDeadline deadline;
+        private LimitedBodySubscriber<Path> subscriber;
+        private boolean cancelled;
+
+        private DownloadBody(Path file, long maxBytes, RuntimeDeadline deadline) {
+            this.file = file;
+            this.maxBytes = maxBytes;
+            this.deadline = deadline;
+        }
+
+        @Override
+        public synchronized HttpResponse.BodySubscriber<Path> apply(HttpResponse.ResponseInfo response) {
+            deadline.check();
+            if (cancelled) throw new CancellationException();
+            subscriber = new LimitedBodySubscriber<>(HttpResponse.BodySubscribers.ofFile(file), maxBytes);
+            return subscriber;
+        }
+
+        synchronized void cancel(Throwable failure) {
+            cancelled = true;
+            if (subscriber != null) subscriber.abort(failure);
+        }
+    }
+
     private static final class LimitedBodySubscriber<T> implements HttpResponse.BodySubscriber<T> {
 
         private final HttpResponse.BodySubscriber<T> delegate;
@@ -167,13 +232,17 @@ public class HttpUtils {
         }
 
         @Override
-        public void onSubscribe(Flow.Subscription subscription) {
+        public synchronized void onSubscribe(Flow.Subscription subscription) {
+            if (done) {
+                subscription.cancel();
+                return;
+            }
             this.subscription = subscription;
             delegate.onSubscribe(subscription);
         }
 
         @Override
-        public void onNext(List<ByteBuffer> item) {
+        public synchronized void onNext(List<ByteBuffer> item) {
             if (done) {
                 return;
             }
@@ -191,7 +260,7 @@ public class HttpUtils {
         }
 
         @Override
-        public void onError(Throwable throwable) {
+        public synchronized void onError(Throwable throwable) {
             if (done) {
                 return;
             }
@@ -200,7 +269,7 @@ public class HttpUtils {
         }
 
         @Override
-        public void onComplete() {
+        public synchronized void onComplete() {
             if (done) {
                 return;
             }
@@ -209,6 +278,11 @@ public class HttpUtils {
         }
 
         private void fail(IOException failure) {
+            abort(failure);
+        }
+
+        synchronized void abort(Throwable failure) {
+            if (done) return;
             done = true;
             if (subscription != null) {
                 subscription.cancel();

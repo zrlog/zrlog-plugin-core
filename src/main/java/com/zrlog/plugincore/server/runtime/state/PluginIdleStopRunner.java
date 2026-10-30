@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.state;
 
 import com.zrlog.plugin.common.LoggerUtil;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.vo.PluginVO;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
@@ -88,12 +89,25 @@ public class PluginIdleStopRunner {
                 new PluginRuntimeStateStore(new WebsiteRuntimeKvStore()));
     }
 
+    public boolean reclaimOneIdlePluginForCapacity(long nowMs, PluginRuntimeSetting runtimeSetting,
+                                                    PluginCore pluginCore, String excludedPluginId, RuntimeDeadline deadline) {
+        return reclaimOneIdlePluginForCapacity(nowMs, runtimeSetting, pluginCore, excludedPluginId,
+                new PluginRuntimeStateStore(new WebsiteRuntimeKvStore()), deadline);
+    }
+
     boolean reclaimOneIdlePluginForCapacity(long nowMs,
                                              PluginRuntimeSetting runtimeSetting,
                                              PluginCore pluginCore,
                                              String excludedPluginId,
                                              PluginRuntimeStateStore stateStore) {
-        if (!runtimeSetting.getOnDemandEnabled() || !runtimeSetting.getIdleStopEnabled()) {
+        return reclaimOneIdlePluginForCapacity(nowMs, runtimeSetting, pluginCore, excludedPluginId,
+                stateStore, RuntimeDeadline.unlimited());
+    }
+
+    private boolean reclaimOneIdlePluginForCapacity(long nowMs, PluginRuntimeSetting runtimeSetting,
+                                                     PluginCore pluginCore, String excludedPluginId,
+                                                     PluginRuntimeStateStore stateStore, RuntimeDeadline deadline) {
+        if (deadline.remainingMillis() == 0 || !runtimeSetting.getOnDemandEnabled() || !runtimeSetting.getIdleStopEnabled()) {
             return false;
         }
         long idleTimeoutMs = Math.max(1L, runtimeSetting.getIdleTimeoutSeconds()) * 1000L;
@@ -101,12 +115,13 @@ public class PluginIdleStopRunner {
                 new DefaultPluginRuntimeStarter(() -> pluginCore, pluginBootstrapService));
         for (PluginRuntimeState candidate : idleCandidates(stateStore, pluginCore, excludedPluginId,
                 nowMs, idleTimeoutMs)) {
+            if (deadline.remainingMillis() == 0) return false;
             String pluginId = candidate.getPluginId();
             AtomicBoolean stopped = new AtomicBoolean();
-            boolean operationCompleted = startCoordinator.withPluginOperation(pluginId, IDLE_STOP_OPERATION_WAIT_MS,
+            boolean operationCompleted = startCoordinator.withPluginOperation(pluginId, deadline.waitMillis(IDLE_STOP_OPERATION_WAIT_MS),
                     () -> startCoordinator.runIfUnclaimed(pluginId,
                             () -> stopped.set(stopIfStillIdle(pluginId, nowMs, idleTimeoutMs, pluginCore, stateStore,
-                                    stateService, true))));
+                                    stateService, true, deadline))));
             if (operationCompleted && stopped.get()) {
                 return true;
             }
@@ -142,6 +157,14 @@ public class PluginIdleStopRunner {
                                     PluginRuntimeStateStore stateStore,
                                     PluginRuntimeStateService stateService,
                                     boolean requireManagedProcess) {
+        return stopIfStillIdle(pluginId, nowMs, idleTimeoutMs, pluginCore, stateStore, stateService,
+                requireManagedProcess, RuntimeDeadline.unlimited());
+    }
+
+    private boolean stopIfStillIdle(String pluginId, long nowMs, long idleTimeoutMs, PluginCore pluginCore,
+                                     PluginRuntimeStateStore stateStore, PluginRuntimeStateService stateService,
+                                     boolean requireManagedProcess, RuntimeDeadline deadline) {
+        if (deadline.remainingMillis() == 0) return false;
         PluginRuntimeState currentState = stateStore.find(pluginId).orElse(null);
         if (!idleStopPolicy.shouldStop(currentState, nowMs, idleTimeoutMs)) {
             return false;
@@ -157,7 +180,8 @@ public class PluginIdleStopRunner {
         String pluginName = PluginSessions.nameOrShortName(pluginVO.getPlugin());
         stateService.markStopping(pluginId, pluginName);
         try {
-            if (pluginBootstrapService.stopPlugin(pluginId, pluginShortName)) {
+            if (deadline.isBounded() ? pluginBootstrapService.stopPlugin(pluginId, pluginShortName, deadline)
+                    : pluginBootstrapService.stopPlugin(pluginId, pluginShortName)) {
                 return true;
             }
             stateService.markFailed(pluginId, pluginName, "Plugin process is still alive after stop");

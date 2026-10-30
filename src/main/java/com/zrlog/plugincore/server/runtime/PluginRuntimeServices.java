@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
+import com.zrlog.plugin.IOSession;
 import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginArtifactBootstrapper;
 import com.zrlog.plugincore.server.runtime.plugin.bootstrap.PluginBootstrapService;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
@@ -66,6 +68,13 @@ public final class PluginRuntimeServices {
 
     public PluginStartCoordinator pluginStarts() {
         return pluginStarts;
+    }
+
+    public boolean stopInvocationProcess(IOSession session,
+                                          RuntimeDeadline deadline) {
+        if (session == null || session.getPlugin() == null) return false;
+        return processRuntime.destroyByRuntimeIdentity(session.getPlugin().getId(), session.getPlugin().getShortName(),
+                pluginSessions.runtimeInstanceId(session), pluginSessions.processId(session), deadline);
     }
 
     public void beginShutdown() {

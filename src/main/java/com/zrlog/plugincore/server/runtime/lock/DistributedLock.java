@@ -27,9 +27,16 @@ public class DistributedLock implements Lock {
     private final String lockKey;
     private final String rawLockKey;
     private final String owner;
+    private final long leaseMillis;
     private String lockValue;
 
     public DistributedLock(String lockKey) {
+        this(lockKey, DEFAULT_LEASE_MILLIS);
+    }
+
+    public DistributedLock(String lockKey, long leaseMillis) {
+        if (leaseMillis < 1) throw new IllegalArgumentException("lease must be positive");
+        this.leaseMillis = leaseMillis;
         this.lockKey = LOCK_PREFIX + lockKey;
         this.rawLockKey = lockKey;
         this.owner = UUID.randomUUID().toString();
@@ -73,7 +80,7 @@ public class DistributedLock implements Lock {
             return false;
         }
         long now = System.currentTimeMillis();
-        String value = lockValue(now + DEFAULT_LEASE_MILLIS);
+        String value = lockValue(now + leaseMillis);
         try {
             clearExpiredLock(now);
             if (insertLock(value)) {

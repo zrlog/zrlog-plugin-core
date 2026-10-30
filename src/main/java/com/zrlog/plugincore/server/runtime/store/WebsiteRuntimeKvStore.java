@@ -4,14 +4,14 @@ import com.zrlog.plugin.common.KvRepository;
 import com.zrlog.plugincore.server.dao.WebSiteDAO;
 
 import java.sql.SQLException;
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 public class WebsiteRuntimeKvStore implements ConditionalKvRepository {
 
-    private final Map<String, WebSiteDAO.WebSiteValueSnapshot> snapshots = new HashMap<>();
+    private final Map<String, WebSiteDAO.WebSiteValueSnapshot> snapshots = new ConcurrentHashMap<>();
 
     @Override
     public Optional<String> get(String key) {

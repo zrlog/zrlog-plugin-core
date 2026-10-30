@@ -5,6 +5,22 @@ public class SchedulerTickResult {
     private int executedCount;
     private int skippedCount;
     private int failedCount;
+    private int uncertainCount;
+    private String triggerId;
+    private java.util.List<SchedulerChildResult> children = new java.util.ArrayList<>();
+
+    public java.util.List<SchedulerChildResult> getChildren() { return children; }
+    private java.util.List<String> runIds = new java.util.ArrayList<>();
+
+    public int getUncertainCount() { return uncertainCount; }
+
+    public void uncertain() { uncertainCount++; }
+
+    public String getTriggerId() { return triggerId; }
+
+    public void setTriggerId(String triggerId) { this.triggerId = triggerId; }
+
+    public java.util.List<String> getRunIds() { return runIds; }
 
     public int getExecutedCount() {
         return executedCount;
@@ -49,5 +65,8 @@ public class SchedulerTickResult {
         executedCount += result.getExecutedCount();
         skippedCount += result.getSkippedCount();
         failedCount += result.getFailedCount();
+        uncertainCount += result.getUncertainCount();
+        runIds.addAll(result.getRunIds());
+        children.addAll(result.getChildren());
     }
 }

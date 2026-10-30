@@ -23,6 +23,7 @@ class ApplicationStartupOptions {
     private final String blogPluginToken;
     private final String nativeInfo;
     private final String contextPath;
+    private final boolean hostSchedulerDriven;
 
     private ApplicationStartupOptions(int httpPort,
                                       int masterPort,
@@ -34,7 +35,7 @@ class ApplicationStartupOptions {
                                       String blogApiHomeUrl,
                                       String blogPluginToken,
                                       String nativeInfo,
-                                      String contextPath) {
+                                      String contextPath, boolean hostSchedulerDriven) {
         this.httpPort = httpPort;
         this.masterPort = masterPort;
         this.dbProperties = dbProperties;
@@ -46,6 +47,7 @@ class ApplicationStartupOptions {
         this.blogPluginToken = blogPluginToken;
         this.nativeInfo = nativeInfo;
         this.contextPath = contextPath;
+        this.hostSchedulerDriven = hostSchedulerDriven;
     }
 
     static ApplicationStartupOptions parse(String[] args) throws IOException {
@@ -59,7 +61,7 @@ class ApplicationStartupOptions {
             blogRunTime.setPath(DevUtil.blogRuntimePath());
             blogRunTime.setVersion("1.5");
             return new ApplicationStartupOptions(httpPort, masterPort, dbProperties, pluginPath, blogRunTime,
-                    false, -1, PluginHostConnection.DEFAULT_BLOG_API_HOME_URL, "", "", "");
+                    false, -1, PluginHostConnection.DEFAULT_BLOG_API_HOME_URL, "", "", "", false);
         }
         blogRunTime.setPath(stringArg(args, 5, DevUtil.blogRuntimePath()));
         blogRunTime.setVersion(stringArg(args, 6, DevUtil.blogVersion()));
@@ -67,7 +69,8 @@ class ApplicationStartupOptions {
         String blogApiHomeUrl = blogApiHomeUrl(args, contextPath);
         return new ApplicationStartupOptions(httpPort, masterPort, new File(dbPropertiesPath), pluginPath, blogRunTime,
                 true, intArg(args, 4, -1), blogApiHomeUrl, stringArg(args, 8, "_NOT_FOUND"),
-                normalizeNativeInfo(stringArg(args, 9, "")), contextPath);
+                normalizeNativeInfo(stringArg(args, 9, "")), contextPath,
+                args != null && java.util.Arrays.asList(args).contains("--host-scheduler"));
     }
 
     private static File createDevDbProperties() throws IOException {
@@ -150,6 +153,8 @@ class ApplicationStartupOptions {
     String getNativeInfo() {
         return nativeInfo;
     }
+
+    boolean isHostSchedulerDriven() { return hostSchedulerDriven; }
 
     String getContextPath() {
         return contextPath;

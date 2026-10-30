@@ -17,6 +17,7 @@ public class ApplicationStartupOptionsTest {
 
         assertEquals(9089, options.getHttpPort());
         assertFalse(options.hasExternalDbProperties());
+        assertFalse(options.isHostSchedulerDriven());
         assertTrue(options.getDbProperties().exists());
         assertEquals(PluginHostConnection.DEFAULT_BLOG_API_HOME_URL, options.getBlogApiHomeUrl());
         assertEquals("", options.getBlogPluginToken());
@@ -53,6 +54,18 @@ public class ApplicationStartupOptionsTest {
         assertEquals("token", options.getBlogPluginToken());
         assertEquals("", options.getNativeInfo());
         assertEquals("/sub", options.getContextPath());
+        assertFalse(options.isHostSchedulerDriven());
+    }
+
+    @Test
+    public void explicitHostOwnershipFlagKeepsExistingPositionalArguments() throws Exception {
+        ApplicationStartupOptions options = ApplicationStartupOptions.parse(new String[]{
+                "9089", "19080", "/tmp/blog-db.properties", "/tmp/plugins", "19081", "/tmp/blog-runtime",
+                "4.0.0", "8080", "token", "-", "/sub", "-Duser.dir=/tmp/worker", "--host-scheduler"
+        });
+        assertTrue(options.isHostSchedulerDriven());
+        assertEquals("http://127.0.0.1:8080/sub", options.getBlogApiHomeUrl());
+        assertEquals("token", options.getBlogPluginToken());
     }
 
     @Test

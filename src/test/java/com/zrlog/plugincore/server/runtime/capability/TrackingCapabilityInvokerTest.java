@@ -25,6 +25,44 @@ import static org.junit.Assert.fail;
 public class TrackingCapabilityInvokerTest {
 
     @Test
+    public void coldPluginStartsInsideBudgetBeforeCapabilityRuns() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        java.util.concurrent.atomic.AtomicBoolean ready = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicLong startupBudget = new java.util.concurrent.atomic.AtomicLong();
+        PluginRuntimeStarter starter = new PluginRuntimeStarter() {
+            public boolean isStarted(String id) { return ready.get(); }
+            public Optional<PluginIdentity> findPlugin(String id) { return Optional.of(new PluginIdentity(id, "fixture")); }
+            public void start(PluginIdentity identity) { throw new AssertionError("bounded startup required"); }
+            public void start(PluginIdentity identity, com.zrlog.plugincore.server.runtime.util.RuntimeDeadline deadline) {
+                startupBudget.set(deadline.remainingMillis()); ready.set(true);
+            }
+        };
+        TrackingCapabilityInvoker invoker = new TrackingCapabilityInvoker((plugin, capability, payload, ctx) -> {
+            assertTrue(ready.get());
+            assertTrue(ctx.remainingMillis() > 1000 + SocketCapabilityInvoker.CLEANUP_RESERVE_MILLIS);
+            CapabilityInvokeResult result = new CapabilityInvokeResult(); result.setSuccess(true); return result;
+        }, new PluginRuntimeStateService(new PluginRuntimeStateStore(kvStore), starter), new InvocationLogStore(kvStore));
+        InvokeContext context = context("tick"); context.setTimeoutSeconds(1);
+        context.setDeadlineEpochMillis(System.currentTimeMillis() + 2000 + SocketCapabilityInvoker.CLEANUP_RESERVE_MILLIS);
+        assertTrue(invoker.invoke("cold-fixture", "test.run", null, context).isSuccess());
+        assertTrue(startupBudget.get() > 0 && startupBudget.get() <= 1000);
+        assertFalse(context.isOutcomeUncertain());
+        assertEquals("success", new InvocationLogStore(kvStore).list().get(0).getStatus());
+    }
+
+    @Test
+    public void exhaustedStartupBudgetNeverSendsBusinessInvocation() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        TrackingCapabilityInvoker invoker = invoker(kvStore, neverDelegate(), new FakeStarter(true));
+        InvokeContext context = context("tick"); context.setTimeoutSeconds(2);
+        context.setDeadlineEpochMillis(System.currentTimeMillis() + 1000);
+        CapabilityInvokeResult result = invoker.invoke("plugin-a", "test.run", null, context);
+        assertFalse(result.isSuccess()); assertFalse(context.isOutcomeUncertain());
+        assertEquals("Plugin start failed", result.getErrorMessage());
+        assertEquals("error", new InvocationLogStore(kvStore).list().get(0).getStatus());
+    }
+
+    @Test
     public void shouldLogSuccessAndMarkRuntimeReady() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         TrackingCapabilityInvoker invoker = invoker(kvStore, successDelegate(), new FakeStarter(true));
@@ -50,10 +88,13 @@ public class TrackingCapabilityInvokerTest {
             throw new IllegalStateException("delegate failed");
         }, new FakeStarter(true));
 
+        InvokeContext invocation = context("scheduler");
         CapabilityInvokeResult result = invoker.invoke(
-                "plugin-a", "reminder.scanDueTasks", null, context("scheduler"));
+                "plugin-a", "reminder.scanDueTasks", null, invocation);
 
         assertFalse(result.isSuccess());
+        assertTrue(invocation.isOutcomeUncertain());
+        assertEquals("uncertain", new InvocationLogStore(kvStore).list().get(0).getStatus());
         assertEquals("delegate failed", result.getErrorMessage());
         assertInvocationFinished(kvStore, "delegate failed");
     }
@@ -272,7 +313,7 @@ public class TrackingCapabilityInvokerTest {
         assertTrue(state.getInstances().get(0).getActiveInvocationIds().isEmpty());
         assertEquals(errorMessage, state.getLastError());
         assertEquals(1, new InvocationLogStore(kvStore).list().size());
-        assertEquals("error", new InvocationLogStore(kvStore).list().get(0).getStatus());
+        assertEquals("uncertain", new InvocationLogStore(kvStore).list().get(0).getStatus());
         assertEquals(errorMessage, new InvocationLogStore(kvStore).list().get(0).getErrorMessage());
     }
 

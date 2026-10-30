@@ -9,6 +9,7 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -16,6 +17,35 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 public class PluginRuntimeStateServiceTest {
+
+    @Test(timeout = 3000)
+    public void sharedDeadlineLeavesCleanupTimeWhenPluginNeverBecomesReady() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        java.util.concurrent.atomic.AtomicLong startupBudget = new java.util.concurrent.atomic.AtomicLong();
+        java.util.concurrent.atomic.AtomicLong cleanupBudget = new java.util.concurrent.atomic.AtomicLong();
+        AtomicInteger starts = new AtomicInteger();
+        PluginRuntimeStarter starter = new PluginRuntimeStarter() {
+            public boolean isStarted(String id) { return starts.get() > 0; }
+            public boolean isReady(String id) { return false; }
+            public Optional<PluginIdentity> findPlugin(String id) { return Optional.of(new PluginIdentity(id, "fixture")); }
+            public boolean managesRuntimeState() { return true; }
+            public void start(PluginIdentity id) { throw new AssertionError("must propagate deadline"); }
+            public void start(PluginIdentity id, com.zrlog.plugincore.server.runtime.util.RuntimeDeadline deadline) {
+                startupBudget.set(deadline.remainingMillis()); starts.incrementAndGet();
+            }
+            public void cleanupStartFailure(PluginIdentity id, com.zrlog.plugincore.server.runtime.util.RuntimeDeadline deadline) {
+                cleanupBudget.set(deadline.remainingMillis());
+            }
+        };
+        PluginRuntimeStateService service = new PluginRuntimeStateService(new PluginRuntimeStateStore(kvStore), starter,
+                30000, 1000, "budget-instance", new PluginStartCoordinator());
+        long startedAt = System.nanoTime();
+        assertFalse(service.ensureStarted("fixture", com.zrlog.plugincore.server.runtime.util.RuntimeDeadline.afterMillis(400)));
+        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1000);
+        assertEquals(1, starts.get());
+        assertTrue(startupBudget.get() > 0 && startupBudget.get() <= 350);
+        assertTrue("cleanup must retain part of the same request budget", cleanupBudget.get() > 0);
+    }
 
     @Test
     public void shouldStartPluginAndMarkReady() {
@@ -79,6 +109,25 @@ public class PluginRuntimeStateServiceTest {
         assertEquals("ready", state.getStatus());
         assertEquals(Integer.valueOf(0), state.getActiveInvocationCount());
         assertEquals("boom", state.getLastError());
+    }
+
+    @Test
+    public void lateInvocationEndCannotResurrectStoppedInstanceOrChangeReplacement() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        PluginRuntimeStateStore store = new PluginRuntimeStateStore(kvStore);
+        PluginRuntimeStateService service = new PluginRuntimeStateService(store, new FakeStarter(), "instance");
+        service.markInvocationStart("plugin-a", "reminder", "old-invocation");
+        service.markStopped("plugin-a", "reminder");
+        service.markInvocationEnd("plugin-a", "reminder", "old-invocation", "late failure");
+        PluginRuntimeState stopped = store.find("plugin-a").get();
+        assertEquals("stopped", stopped.getStatus()); assertTrue(stopped.getInstances().isEmpty());
+        service.markReady("plugin-a", "reminder");
+        service.markInvocationStart("plugin-a", "reminder", "new-invocation");
+        service.markInvocationEnd("plugin-a", "reminder", "old-invocation", "old failure");
+        PluginRuntimeState replacement = store.find("plugin-a").get();
+        assertEquals(Integer.valueOf(1), replacement.getActiveInvocationCount());
+        assertEquals(Collections.singleton("new-invocation"), replacement.getInstances().get(0).getActiveInvocationIds());
+        assertEquals(null, replacement.getLastError());
     }
 
     @Test

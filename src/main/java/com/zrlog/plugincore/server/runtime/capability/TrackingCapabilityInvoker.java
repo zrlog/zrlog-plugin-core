@@ -60,7 +60,11 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
             context.setTimeoutSeconds(timeoutSeconds(capability));
         }
         String pluginName = capability.map(PluginCapability::getPluginName).orElse(null);
-        if (!stateService.ensureStarted(pluginId)) {
+        if (context.remainingMillis() == 0) return error("Execution budget exhausted before invocation");
+        boolean started = !context.isAllowStartup() || (context.getDeadlineEpochMillis() == null
+                ? stateService.ensureStarted(pluginId)
+                : stateService.ensureStarted(pluginId, context.deadline().reserveMillis(context.getTimeoutSeconds() * 1000L + SocketCapabilityInvoker.CLEANUP_RESERVE_MILLIS)));
+        if (!started) {
             result = error("Plugin start failed");
             appendLogBestEffort(pluginId, capabilityKey, context, result, startedAtMs, capability);
             return result;
@@ -73,11 +77,14 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
             try {
                 result = delegate.invoke(pluginId, capabilityKey, payload, context);
                 if (result == null) {
+                    context.markOutcomeUncertain();
                     result = error("Capability invoker returned no result");
                 }
             } catch (RuntimeException e) {
+                context.markOutcomeUncertain();
                 result = error(e.getMessage());
             } catch (Error e) {
+                context.markOutcomeUncertain();
                 result = error(errorMessage(e));
                 fatalError = e;
             }
@@ -202,7 +209,7 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
         log.setStartedAt(startedAtMs);
         log.setFinishedAt(finishedAtMs);
         log.setDurationMs(finishedAtMs - startedAtMs);
-        log.setStatus(result.isSuccess() ? "success" : "error");
+        log.setStatus(context.isOutcomeUncertain() ? "uncertain" : result.isSuccess() ? "success" : "error");
         log.setErrorMessage(result.getErrorMessage());
         invocationLogStore.append(log);
     }

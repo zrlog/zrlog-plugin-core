@@ -9,8 +9,13 @@ import java.util.Objects;
 public class SchedulerSetting {
 
     private Boolean enabled = Boolean.TRUE;
+    private Boolean hostDriven = Boolean.FALSE;
     private String externalHost;
     private List<SchedulerProviderSetting> providers = new ArrayList<>();
+
+    public Boolean getHostDriven() { return Boolean.TRUE.equals(hostDriven); }
+
+    public void setHostDriven(Boolean hostDriven) { this.hostDriven = Boolean.TRUE.equals(hostDriven); }
 
     public Boolean getEnabled() {
         return Boolean.TRUE;

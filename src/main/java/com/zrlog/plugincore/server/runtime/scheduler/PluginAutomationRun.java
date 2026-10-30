@@ -8,11 +8,25 @@ public class PluginAutomationRun {
     private String automationId;
     private String pluginId;
     private String capabilityKey;
+    private String triggerId;
+    private String source;
+    private String actorId;
+
+    public String getActorId() { return actorId; }
+    public void setActorId(String actorId) { this.actorId = actorId; }
     private String status;
     private Long startedAt;
     private Long finishedAt;
     private Long durationMs;
     private String errorMessage;
+
+    public String getTriggerId() { return triggerId; }
+
+    public void setTriggerId(String triggerId) { this.triggerId = triggerId; }
+
+    public String getSource() { return source; }
+
+    public void setSource(String source) { this.source = source; }
 
     public String getId() {
         return id;

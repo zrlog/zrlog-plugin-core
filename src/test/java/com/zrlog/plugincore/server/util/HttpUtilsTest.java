@@ -213,6 +213,47 @@ public class HttpUtilsTest {
         }
     }
 
+    @Test(timeout = 5000)
+    public void deadlineStopsStalledBodyAndLateWritesCannotReplaceArtifact() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        java.util.concurrent.CountDownLatch bodyStarted = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch releaseBody = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch bodyFinished = new java.util.concurrent.CountDownLatch(1);
+        server.createContext("/", exchange -> {
+            try {
+                exchange.sendResponseHeaders(200, 0);
+                exchange.getResponseBody().write("first".getBytes(StandardCharsets.UTF_8));
+                exchange.getResponseBody().flush(); bodyStarted.countDown();
+                releaseBody.await();
+                exchange.getResponseBody().write("late".getBytes(StandardCharsets.UTF_8));
+            } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            catch (IOException disconnected) { /* timeout closes the client transfer */ }
+            finally { exchange.close(); bodyFinished.countDown(); }
+        });
+        Path directory = Files.createTempDirectory("plugin-download-deadline");
+        Path target = directory.resolve("plugin.jar");
+        byte[] previous = "existing-artifact".getBytes(StandardCharsets.UTF_8);
+        Files.write(target, previous); server.start();
+        try {
+            java.util.concurrent.CompletableFuture<Exception> result = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    HttpUtils.downloadToFile(url(server), Collections.emptyMap(), target.toFile(), 100,
+                            com.zrlog.plugincore.server.runtime.util.RuntimeDeadline.afterMillis(500));
+                    return null;
+                } catch (Exception error) { return error; }
+            });
+            assertTrue(bodyStarted.await(2, java.util.concurrent.TimeUnit.SECONDS));
+            Exception error = result.get(2, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(String.valueOf(error), error instanceof java.net.http.HttpTimeoutException);
+            assertArrayEquals(previous, Files.readAllBytes(target));
+            try (Stream<Path> files = Files.list(directory)) { assertEquals(1, files.count()); }
+            releaseBody.countDown();
+            assertTrue(bodyFinished.await(1, java.util.concurrent.TimeUnit.SECONDS));
+            assertArrayEquals(previous, Files.readAllBytes(target));
+            try (Stream<Path> files = Files.list(directory)) { assertEquals(1, files.count()); }
+        } finally { releaseBody.countDown(); server.stop(0); delete(directory); }
+    }
+
     private static HttpServer server(byte[] response) throws IOException {
         return server(response, false);
     }

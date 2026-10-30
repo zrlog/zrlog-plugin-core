@@ -3,6 +3,7 @@ package com.zrlog.plugincore.server.runtime.plugin.process;
 import com.hibegin.common.util.EnvKit;
 import com.zrlog.plugin.common.ConfigKit;
 import com.zrlog.plugin.common.LoggerUtil;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
 import com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig;
 import com.zrlog.plugincore.server.model.PluginCore;
@@ -40,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -61,8 +63,8 @@ public class PluginProcessRuntime {
     private final Map<String, ProcessSlot> processMap = new ConcurrentHashMap<>();
     private final Map<String, Long> processIdMap = new ConcurrentHashMap<>();
     private final Map<String, String> processRuntimeInstanceIdMap = new ConcurrentHashMap<>();
-    private final Object processLifecycleLock = new Object();
-    private final Object processCapacityLock = new Object();
+    private final ReentrantLock processLifecycleLock = new ReentrantLock();
+    private final ReentrantLock processCapacityLock = new ReentrantLock();
     private final PluginConfig pluginConfig;
     private final PluginStartCoordinator startCoordinator;
     private final AtomicBoolean shutdownStarted = new AtomicBoolean(false);
@@ -249,10 +251,14 @@ public class PluginProcessRuntime {
     }
 
     public boolean destroyByPluginId(String pluginId, String pluginShortName) {
+        return destroyByPluginId(pluginId, pluginShortName, RuntimeDeadline.unlimited());
+    }
+
+    public boolean destroyByPluginId(String pluginId, String pluginShortName, RuntimeDeadline deadline) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, pluginShortName, pluginShortName)) {
             startCoordinator.cancelStart(pluginId);
-            return startCoordinator.withPluginOperation(pluginId, PROCESS_OPERATION_WAIT_MS,
-                    () -> destroyByPluginIdWithinOperation(pluginId, pluginShortName, null));
+            return startCoordinator.withPluginOperation(pluginId, deadline.waitMillis(PROCESS_OPERATION_WAIT_MS),
+                    () -> destroyByPluginIdWithinOperation(pluginId, pluginShortName, null, deadline));
         }
     }
 
@@ -263,9 +269,36 @@ public class PluginProcessRuntime {
         }
     }
 
+    /** Stop only the managed process captured by the invocation, never a replacement. */
+    public boolean destroyByRuntimeIdentity(String pluginId, String pluginShortName,
+                                            String runtimeInstanceId, Long processId, RuntimeDeadline deadline) {
+        if (StringUtils.isEmpty(pluginId) || StringUtils.isEmpty(runtimeInstanceId) || processId == null) return false;
+        return startCoordinator.withPluginOperation(pluginId, deadline.waitMillis(PROCESS_OPERATION_WAIT_MS), () -> {
+            if (!lockWithin(processLifecycleLock, deadline)) return false;
+            try {
+                ProcessSlot slot = processMap.get(pluginId);
+                if (slot == null || slot.process == null
+                        || !Objects.equals(pluginShortName, slot.pluginShortName)
+                        || !Objects.equals(processId, processIdMap.get(pluginId))
+                        || !Objects.equals(runtimeInstanceId, processRuntimeInstanceIdMap.get(pluginId))) return false;
+                return destroyCurrentProcess(pluginId, pluginShortName, slot.process, deadline);
+            } finally {
+                processLifecycleLock.unlock();
+            }
+        });
+    }
+
     private boolean destroyByPluginIdWithinOperation(String pluginId, String pluginShortName, Process expectedProcess) {
-        synchronized (processLifecycleLock) {
-            return destroyCurrentProcess(pluginId, pluginShortName, expectedProcess);
+        return destroyByPluginIdWithinOperation(pluginId, pluginShortName, expectedProcess, RuntimeDeadline.unlimited());
+    }
+
+    private boolean destroyByPluginIdWithinOperation(String pluginId, String pluginShortName, Process expectedProcess,
+                                                     RuntimeDeadline deadline) {
+        if (!lockWithin(processLifecycleLock, deadline)) return false;
+        try {
+            return destroyCurrentProcess(pluginId, pluginShortName, expectedProcess, deadline);
+        } finally {
+            processLifecycleLock.unlock();
         }
     }
 
@@ -294,17 +327,24 @@ public class PluginProcessRuntime {
     }
 
     public Process loadPlugin(final File pluginFile, String pluginId) {
+        return loadPlugin(pluginFile, pluginId, RuntimeDeadline.unlimited());
+    }
+
+    public Process loadPlugin(final File pluginFile, String pluginId, RuntimeDeadline deadline) {
+        deadline.check();
         if (pluginFile == null || !pluginFile.exists()) {
             return null;
         }
         String pluginShortName = PluginFiles.getPluginShortName(pluginFile);
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, pluginShortName, pluginShortName)) {
-            synchronized (processLifecycleLock) {
+            if (!lockWithin(processLifecycleLock, deadline)) throw new RuntimeDeadline.Expired();
+            try {
+                deadline.check();
                 if (shuttingDown) {
                     return null;
                 }
-                destroyOtherProcesses(pluginShortName, pluginId);
-                if (!prepareProcessSlot(pluginId, pluginShortName)) {
+                destroyOtherProcesses(pluginShortName, pluginId, deadline);
+                if (!prepareProcessSlot(pluginId, pluginShortName, deadline)) {
                     return null;
                 }
                 PluginRuntimeStates.removeLocalRuntimeInstances(pluginId);
@@ -324,10 +364,13 @@ public class PluginProcessRuntime {
                 );
                 if (!pluginFile.getName().endsWith(".jar")) {
                     if (File.separatorChar == '/') {
-                        CmdUtil.sendCmd("chmod", "a+x", pluginFile.toString());
+                        if (!pluginFile.canExecute() && !pluginFile.setExecutable(true, false)) {
+                            throw new IllegalStateException("Unable to make plugin executable");
+                        }
                     }
                 }
-                ProcessSlot slot = startProcess(pluginId, pluginShortName, launchCommand);
+                deadline.check();
+                ProcessSlot slot = startProcess(pluginId, pluginShortName, launchCommand, deadline);
                 if (slot != null) {
                     Process pr = slot.process;
                     try {
@@ -343,7 +386,7 @@ public class PluginProcessRuntime {
                                 slot.cleaned);
                         return pr;
                     } catch (RuntimeException | Error e) {
-                        rollbackSpawnedProcess(pluginId, slot, e);
+                        rollbackSpawnedProcess(pluginId, slot, e, deadline);
                         throw e;
                     } finally {
                         slot.initializationFinished.countDown();
@@ -354,16 +397,20 @@ public class PluginProcessRuntime {
                             "Plugin process start failed");
                 }
                 return null;
+            } finally {
+                processLifecycleLock.unlock();
             }
         }
     }
 
     private ProcessSlot startProcess(String pluginId, String pluginShortName,
-                                     LaunchCommand launchCommand) {
+                                     LaunchCommand launchCommand, RuntimeDeadline deadline) {
         if (StringUtils.isEmpty(pluginId)) {
             throw new IllegalArgumentException("pluginId is required");
         }
-        synchronized (processCapacityLock) {
+        if (!lockWithin(processCapacityLock, deadline)) throw new RuntimeDeadline.Expired();
+        try {
+            deadline.check();
             reapExitedProcesses();
             ProcessSlot slot = new ProcessSlot(pluginShortName);
             Thread watcher = newProcessWatcher(slot, pluginId);
@@ -378,14 +425,16 @@ public class PluginProcessRuntime {
             }
             Process process = null;
             try {
+                deadline.check();
                 process = startPluginProcess(launchCommand);
                 publishSpawnedProcess(slot, process);
+                deadline.check();
                 if (stopPublishedProcessAfterShutdown(slot, process)) {
                     slot.initializationFinished.countDown();
                     return null;
                 }
             } catch (RuntimeException | Error spawnFailure) {
-                preserveOrReleaseFailedSpawn(pluginId, slot, process);
+                preserveOrReleaseFailedSpawn(pluginId, slot, process, deadline);
                 slot.initializationFinished.countDown();
                 throw spawnFailure;
             }
@@ -395,6 +444,8 @@ public class PluginProcessRuntime {
                 return null;
             }
             return slot;
+        } finally {
+            processCapacityLock.unlock();
         }
     }
 
@@ -428,10 +479,10 @@ public class PluginProcessRuntime {
         }
     }
 
-    private void rollbackSpawnedProcess(String pluginId, ProcessSlot slot, Throwable failure) {
+    private void rollbackSpawnedProcess(String pluginId, ProcessSlot slot, Throwable failure, RuntimeDeadline deadline) {
         String pluginShortName = slot.pluginShortName;
         try {
-            if (processMap.get(pluginId) == slot && terminateAndRemove(pluginId, slot)) {
+            if (processMap.get(pluginId) == slot && terminateAndRemove(pluginId, slot, deadline)) {
                 if (slot.cleaned.compareAndSet(false, true)) {
                     cleanupProcessState(pluginId, pluginShortName);
                 }
@@ -447,7 +498,7 @@ public class PluginProcessRuntime {
         }
     }
 
-    private void preserveOrReleaseFailedSpawn(String pluginId, ProcessSlot slot, Process process) {
+    private void preserveOrReleaseFailedSpawn(String pluginId, ProcessSlot slot, Process process, RuntimeDeadline deadline) {
         if (process == null) {
             processMap.remove(pluginId, slot);
             slot.finishSpawn(null);
@@ -456,7 +507,7 @@ public class PluginProcessRuntime {
         slot.finishSpawn(process);
         boolean stopped;
         try {
-            stopped = terminateProcess(process);
+            stopped = terminateProcess(process, deadline);
         } catch (RuntimeException | Error cleanupFailure) {
             stopped = false;
             logBestEffort(Level.WARNING, "unable to stop plugin after process publication failed", cleanupFailure);
@@ -643,7 +694,8 @@ public class PluginProcessRuntime {
     private void cleanupExitedProcess(ProcessSlot slot, String pluginId, int exitCode) {
         String pluginShortName = slot.pluginShortName;
         try (PluginLogContext.Scope ignored = PluginLogContext.open(pluginId, pluginShortName, pluginShortName)) {
-            synchronized (processLifecycleLock) {
+            processLifecycleLock.lock();
+            try {
                 if (!processMap.remove(pluginId, slot)) {
                     return;
                 }
@@ -652,23 +704,26 @@ public class PluginProcessRuntime {
                     return;
                 }
                 cleanupUnexpectedExit(pluginId, pluginShortName, slot, exitCode);
+            } finally {
+                processLifecycleLock.unlock();
             }
         }
     }
 
-    private void destroyOtherProcesses(String pluginShortName, String currentPluginId) {
+    private void destroyOtherProcesses(String pluginShortName, String currentPluginId, RuntimeDeadline deadline) {
         for (Map.Entry<String, ProcessSlot> entry : new ArrayList<Map.Entry<String, ProcessSlot>>(processMap.entrySet())) {
             if (Objects.equals(currentPluginId, entry.getKey())
                     || !Objects.equals(pluginShortName, entry.getValue().pluginShortName)) {
                 continue;
             }
-            if (!destroyCurrentProcess(entry.getKey(), pluginShortName, null)) {
+            deadline.check();
+            if (!destroyCurrentProcess(entry.getKey(), pluginShortName, null, deadline)) {
                 throw new PluginStartDeferredException("Existing plugin process is still alive for " + pluginShortName);
             }
         }
     }
 
-    private boolean prepareProcessSlot(String pluginId, String pluginShortName) {
+    private boolean prepareProcessSlot(String pluginId, String pluginShortName, RuntimeDeadline deadline) {
         ProcessSlot existingSlot = processMap.get(pluginId);
         if (existingSlot == null) {
             return true;
@@ -684,7 +739,7 @@ public class PluginProcessRuntime {
         if (wasAlive && withinStartGrace(existingSlot)) {
             return false;
         }
-        if (!terminateAndRemove(pluginId, existingSlot)) {
+        if (!terminateAndRemove(pluginId, existingSlot, deadline)) {
             LOGGER.warning(PluginLogContext.prefix("keep plugin " + pluginShortName
                     + " reserved because the old process is still alive"));
             return false;
@@ -751,12 +806,12 @@ public class PluginProcessRuntime {
         }
     }
 
-    private boolean destroyCurrentProcess(String pluginId, String pluginShortName, Process expectedProcess) {
+    private boolean destroyCurrentProcess(String pluginId, String pluginShortName, Process expectedProcess, RuntimeDeadline deadline) {
         ProcessSlot slot = processMap.get(pluginId);
         if (expectedProcess != null && (slot == null || slot.process != expectedProcess)) {
             return false;
         }
-        if (slot != null && !terminateAndRemove(pluginId, slot)) {
+        if (slot != null && !terminateAndRemove(pluginId, slot, deadline)) {
             LOGGER.warning(PluginLogContext.prefix("plugin process is still alive; keep its runtime slot reserved"));
             return false;
         }
@@ -764,18 +819,22 @@ public class PluginProcessRuntime {
         return true;
     }
 
-    private boolean terminateAndRemove(String pluginId, ProcessSlot slot) {
+    private boolean terminateAndRemove(String pluginId, ProcessSlot slot, RuntimeDeadline deadline) {
         Process process = slot.process;
         if (process == null) {
             return processMap.remove(pluginId, slot);
         }
-        if (!terminateProcess(process)) {
+        if (!terminateProcess(process, deadline)) {
             return false;
         }
         return processMap.remove(pluginId, slot);
     }
 
     private boolean terminateProcess(Process process) {
+        return terminateProcess(process, RuntimeDeadline.unlimited());
+    }
+
+    private boolean terminateProcess(Process process, RuntimeDeadline deadline) {
         if (!process.isAlive()) {
             return true;
         }
@@ -786,7 +845,7 @@ public class PluginProcessRuntime {
         } catch (RuntimeException | Error e) {
             logBestEffort(Level.WARNING, "unable to request graceful plugin shutdown", e);
         }
-        if (gracefulRequested && awaitExit(process, PROCESS_STOP_GRACE_MS) && !process.isAlive()) {
+        if (gracefulRequested && awaitExit(process, deadline.waitMillis(PROCESS_STOP_GRACE_MS)) && !process.isAlive()) {
             return true;
         }
         if (!process.isAlive()) {
@@ -798,8 +857,23 @@ public class PluginProcessRuntime {
             logBestEffort(Level.WARNING, "unable to force plugin shutdown", e);
             return !process.isAlive();
         }
-        awaitExit(process, PROCESS_STOP_GRACE_MS);
+        awaitExit(process, deadline.waitMillis(PROCESS_STOP_GRACE_MS));
         return !process.isAlive();
+    }
+
+    private static boolean lockWithin(ReentrantLock lock, RuntimeDeadline deadline) {
+        if (!deadline.isBounded()) {
+            lock.lock();
+            return true;
+        }
+        long remaining = deadline.remainingMillis();
+        if (remaining == 0) return false;
+        try {
+            return lock.tryLock(remaining, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private boolean awaitExit(Process process, long timeoutMs) {
@@ -851,7 +925,8 @@ public class PluginProcessRuntime {
         if (StringUtils.isEmpty(pluginId) || StringUtils.isEmpty(runtimeInstanceId) || processId == null) {
             return;
         }
-        synchronized (processLifecycleLock) {
+        processLifecycleLock.lock();
+        try {
             ProcessSlot slot = processMap.get(pluginId);
             if (slot == null || slot.process == null
                     || !Objects.equals(processId, processIdMap.get(pluginId))
@@ -859,6 +934,8 @@ public class PluginProcessRuntime {
                 return;
             }
             slot.readyAt = System.currentTimeMillis();
+        } finally {
+            processLifecycleLock.unlock();
         }
     }
 

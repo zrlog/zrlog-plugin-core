@@ -225,6 +225,11 @@ public final class RuntimeApiModels {
 
     public static class SchedulerSettingsResponse extends Response {
         private Boolean enabled;
+        private Boolean hostDriven;
+
+        public Boolean getHostDriven() { return hostDriven; }
+
+        public void setHostDriven(Boolean hostDriven) { this.hostDriven = hostDriven; }
         private String externalHost;
         private String effectiveExternalHost;
         private String externalTickPath;
@@ -498,6 +503,12 @@ public final class RuntimeApiModels {
         private Long lastRunAt;
         private String leaseOwner;
         private String leaseUntil;
+        private boolean reviewRequired;
+        private String reviewRunId;
+
+        public boolean isReviewRequired() { return reviewRequired; }
+
+        public String getReviewRunId() { return reviewRunId; }
         private Map<String, Object> payload;
         private String targetLabel;
 
@@ -517,6 +528,8 @@ public final class RuntimeApiModels {
             response.lastRunAt = automation.getLastRunAt();
             response.leaseOwner = automation.getLeaseOwner();
             response.leaseUntil = automation.getLeaseUntil();
+            response.reviewRequired = automation.isReviewRequired();
+            response.reviewRunId = automation.getReviewRunId();
             response.payload = automation.getPayload();
             return response;
         }
@@ -679,6 +692,12 @@ public final class RuntimeApiModels {
         private Long durationMs;
         private String errorMessage;
         private String targetLabel;
+        private String source;
+        private String triggerId;
+
+        public String getSource() { return source; }
+
+        public String getTriggerId() { return triggerId; }
 
         public static AutomationRunResponse from(PluginAutomationRun run) {
             AutomationRunResponse response = new AutomationRunResponse();
@@ -691,6 +710,8 @@ public final class RuntimeApiModels {
             response.finishedAt = run.getFinishedAt();
             response.durationMs = run.getDurationMs();
             response.errorMessage = run.getErrorMessage();
+            response.source = run.getSource();
+            response.triggerId = run.getTriggerId();
             return response;
         }
 
