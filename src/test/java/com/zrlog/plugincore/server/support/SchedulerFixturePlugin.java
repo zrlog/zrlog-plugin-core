@@ -7,6 +7,7 @@ import com.zrlog.plugin.api.IPluginService;
 import com.zrlog.plugin.api.ScheduledCapability;
 import com.zrlog.plugin.api.Service;
 import com.zrlog.plugin.client.NioClient;
+import com.zrlog.plugin.client.ClientActionHandler;
 import com.zrlog.plugin.data.codec.HttpRequestInfo;
 import com.zrlog.plugin.data.codec.MsgPacket;
 import com.zrlog.plugin.data.codec.MsgPacketStatus;
@@ -25,8 +26,24 @@ public final class SchedulerFixturePlugin implements IPluginAction {
     public static final String CAPABILITY = "fixture.write";
 
     public static void main(String[] args) throws Exception {
-        new NioClient().connectServer(args, Collections.singletonList(FixtureView.class), SchedulerFixturePlugin.class,
+        new NioClient(new FixtureActionHandler()).connectServer(args, Collections.singletonList(FixtureView.class), SchedulerFixturePlugin.class,
                 java.util.List.of(FixtureService.class, OtherFixtureService.class, CacheFixtureService.class));
+    }
+
+    public static final class FixtureActionHandler extends ClientActionHandler {
+        @Override public int capabilityLifecycleVersion() { return 2; }
+
+        @Override public void capabilityCancel(IOSession session, MsgPacket packet) {
+            java.util.Properties fixture = new java.util.Properties();
+            try (var input = SchedulerFixturePlugin.class.getResourceAsStream("/fixture.properties")) {
+                fixture.load(input);
+                Path directory = Path.of(fixture.getProperty("directory"));
+                if (Files.exists(directory.resolve("ignore-cancellation"))) return;
+            } catch (java.io.IOException error) {
+                throw new IllegalStateException(error);
+            }
+            super.capabilityCancel(session, packet);
+        }
     }
 
     public static final class FixtureView {
