@@ -145,7 +145,9 @@ public class SocketCapabilityInvokerTest {
         try (Harness h = new Harness()) {
             h.session.getPlugin().setCapabilityLifecycleVersion(0);
             h.onInvoke = (session, request) -> reply(session, request, result(true, false, false));
-            assertTrue(h.invoke().isSuccess()); assertFalse(h.sent.isRequireCompletion());
+            CapabilityInvokeResult result = h.invoke();
+            assertTrue(result.isSuccess()); assertFalse(result.isExecutionCompleted());
+            assertTrue(h.context.isLegacyCompletion()); assertFalse(h.sent.isRequireCompletion());
         }
     }
 

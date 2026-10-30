@@ -242,6 +242,7 @@ final class NativeRuntimeWarmup {
         automationRun.setPluginId("native-plugin");
         automationRun.setCapabilityKey("native.scan");
         automationRun.setStatus("success");
+        automationRun.setLegacyCompletion(true);
         automationRun.setStartedAt(1L);
         automationRun.setFinishedAt(2L);
         RuntimeApiModels.AutomationRunResponse automationRunResponse = RuntimeApiModels.AutomationRunResponse.from(automationRun);
@@ -259,11 +260,13 @@ final class NativeRuntimeWarmup {
         invocationLog.setRequestId("warmup-request");
         invocationLog.setTraceId("warmup-trace");
         invocationLog.setStatus("success");
+        invocationLog.setLegacyCompletion(true);
         invocationLog.setStartedAt(1L);
         invocationLog.setFinishedAt(2L);
         invocationLog.setDurationMs(1L);
         RuntimeApiModels.InvocationLogResponse invocationLogResponse = new RuntimeApiModels.InvocationLogResponse();
         invocationLogResponse.setId(invocationLog.getId());
+        invocationLogResponse.setLegacyCompletion(invocationLog.isLegacyCompletion());
         invocationLogResponse.setPluginId(invocationLog.getPluginId());
         invocationLogResponse.setPluginName("Native Plugin");
         invocationLogResponse.setPluginPreviewImageBase64("preview");

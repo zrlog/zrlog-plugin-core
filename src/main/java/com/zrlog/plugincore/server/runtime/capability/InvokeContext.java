@@ -4,6 +4,11 @@ import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 
 public class InvokeContext {
 
+    private boolean legacyCompletion;
+    public boolean isLegacyCompletion() { return legacyCompletion; }
+    public void setLegacyCompletion(boolean legacyCompletion) { this.legacyCompletion = legacyCompletion; }
+
+
     private String source;
     private String userId;
     private String requestId;

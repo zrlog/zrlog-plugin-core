@@ -572,6 +572,7 @@ public class SchedulerRuntime {
         context.setAllowStartup(true);
         context.setTimeoutSeconds(timeoutSeconds);
         CapabilityInvokeResult invokeResult = capabilityInvoker.invoke(automation.getPluginId(), automation.getCapabilityKey(), automation.getPayload(), context);
+        run.setLegacyCompletion(context.isLegacyCompletion());
         if (context.isOutcomeUncertain()) {
             run.setStatus("uncertain");
             run.setErrorMessage("Plugin did not confirm the outcome. Review before enabling this task again.");

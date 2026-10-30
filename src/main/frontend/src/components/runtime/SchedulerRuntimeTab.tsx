@@ -412,6 +412,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
                 automationOwnerLabel(run.pluginId, run.pluginName),
                 automationRunTaskLabel(run)
             )}
+            {run.legacyCompletion && <Text type="warning" style={{whiteSpace: "normal"}}>{getRes().common.legacyCompletionWarning}</Text>}
             {isMobile && (
                 <Space direction="vertical" size={4} style={{width: "100%"}}>
                     <Space size={[4, 4]} wrap>

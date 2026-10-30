@@ -140,6 +140,7 @@ final class RuntimeApiResponses {
             response.setFinishedAt(log.getFinishedAt());
             response.setDurationMs(log.getDurationMs());
             response.setErrorMessage(log.getErrorMessage());
+            response.setLegacyCompletion(log.isLegacyCompletion());
             items.add(response);
         }
         return items;

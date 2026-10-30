@@ -43,6 +43,29 @@ import static org.junit.Assert.fail;
 public class SchedulerRuntimeTest {
 
     @Test
+    public void compatibleScheduledRunPersistsWarningAndKeepsItsNextOccurrence() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AutomationStore automations = new AutomationStore(kvStore);
+        AutomationRunStore runs = new AutomationRunStore(kvStore);
+        CapabilityStore capabilities = new CapabilityStore(kvStore);
+        capabilities.register(capability("plugin-a", "reminder.scanDueTasks", "scheduler"));
+        PluginAutomation automation = automation("a1", true);
+        automation.setNextRunAt(SchedulerTimes.millis(now()));
+        automations.saveAll(Collections.singletonList(automation));
+        SchedulerTickResult result = runtime(kvStore, automations, runs, capabilities, (plugin, key, payload, context) -> {
+            context.setLegacyCompletion(true);
+            CapabilityInvokeResult response = new CapabilityInvokeResult(); response.setSuccess(true); return response;
+        }).tick(now());
+        assertEquals(1, result.getExecutedCount());
+        PluginAutomationRun saved = new AutomationRunStore(kvStore).list().get(0);
+        assertEquals("success", saved.getStatus());
+        assertTrue(saved.isLegacyCompletion());
+        assertTrue(com.zrlog.plugincore.server.web.controller.RuntimeApiModels.AutomationRunResponse.from(saved).isLegacyCompletion());
+        assertTrue(new InvocationLogStore(kvStore).list().get(0).isLegacyCompletion());
+        assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(5))), automations.list().get(0).getNextRunAt());
+    }
+
+    @Test
     public void shouldExecuteDueAutomationAndUpdateNextRunAt() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         AutomationStore automationStore = new AutomationStore(kvStore);
