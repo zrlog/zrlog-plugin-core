@@ -44,6 +44,7 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("view-started.tmp"), new Gson().toJson(request));
             Files.move(directory.resolve("view-started.tmp"), directory.resolve("view-started.json"),
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.writeString(directory.resolve("progress"), "0");
             session.sendMsg(com.zrlog.plugin.data.codec.ContentType.HTML, "<aside>公开插件内容</aside>",
                     packet.getMethodStr(), packet.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS, null);
             Files.writeString(directory.resolve("early-response"), "content sent before handler cleanup");
@@ -105,6 +106,7 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("started.tmp"), new Gson().toJson(request));
             Files.move(directory.resolve("started.tmp"), directory.resolve("started.json"),
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            Files.writeString(directory.resolve("progress"), "0");
             if ("early".equals(mode)) {
                 result.setSuccess(true);
                 session.sendJsonMsg(result, packet.getMethodStr(), packet.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);

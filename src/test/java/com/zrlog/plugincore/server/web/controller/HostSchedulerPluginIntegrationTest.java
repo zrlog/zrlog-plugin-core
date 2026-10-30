@@ -61,7 +61,8 @@ public class HostSchedulerPluginIntegrationTest {
 
     private void assertViewScenario(String mode) throws Exception {
         Path root = temporary.newFolder().toPath();
-        int socketPort = freePort(), httpPort = freePort();
+        int[] ports = freePorts();
+        int socketPort = ports[0], httpPort = ports[1];
         var config = new PluginConfig(RunType.BLOG, null, socketPort, root.toString(), new BlogRunTime());
         var services = PluginRuntimeServices.create(config,
                 new PluginHostConnection("http://127.0.0.1:1", "integration-host-secret", "", "", true));
@@ -129,8 +130,8 @@ public class HostSchedulerPluginIntegrationTest {
     @Test
     public void httpTickWaitsForPluginBusinessAndPersistsOnlyThisRunWithoutReplay() throws Exception {
         Path root = temporary.newFolder().toPath();
-        int socketPort = freePort();
-        int httpPort = freePort();
+        int[] ports = freePorts();
+        int socketPort = ports[0], httpPort = ports[1];
         var config = new PluginConfig(RunType.BLOG, null, socketPort, root.toString(), new BlogRunTime());
         var services = PluginRuntimeServices.create(config,
                 new PluginHostConnection("http://127.0.0.1:1", "integration-host-secret", "", "", true));
@@ -225,7 +226,8 @@ public class HostSchedulerPluginIntegrationTest {
 
     private void assertCacheRefresh(String mode) throws Exception {
         Path root = temporary.newFolder().toPath();
-        int socketPort = freePort(), httpPort = freePort();
+        int[] ports = freePorts();
+        int socketPort = ports[0], httpPort = ports[1];
         var config = new PluginConfig(RunType.BLOG, null, socketPort, root.toString(), new BlogRunTime());
         var services = PluginRuntimeServices.create(config,
                 new PluginHostConnection("http://127.0.0.1:1", "integration-host-secret", "", "", true));
@@ -291,7 +293,8 @@ public class HostSchedulerPluginIntegrationTest {
         Path root = temporary.newFolder().toPath();
         Path first = Files.createDirectory(root.resolve("first"));
         Path other = Files.createDirectory(root.resolve("other"));
-        int socketPort = freePort(), httpPort = freePort();
+        int[] ports = freePorts();
+        int socketPort = ports[0], httpPort = ports[1];
         var config = new PluginConfig(RunType.BLOG, null, socketPort, root.toString(), new BlogRunTime());
         var services = PluginRuntimeServices.create(config,
                 new PluginHostConnection("http://127.0.0.1:1", "integration-host-secret", "", "", true));
@@ -387,8 +390,11 @@ public class HostSchedulerPluginIntegrationTest {
                 .header("X-ZrLog-Budget-Millis", String.valueOf(budget)).POST(HttpRequest.BodyPublishers.noBody()).build();
     }
 
-    private static int freePort() throws Exception {
-        try (ServerSocket socket = new ServerSocket(0)) { return socket.getLocalPort(); }
+    private static int[] freePorts() throws Exception {
+        // Hold both reservations together so the OS cannot return the same released port twice.
+        try (ServerSocket socket = new ServerSocket(0); ServerSocket http = new ServerSocket(0)) {
+            return new int[]{socket.getLocalPort(), http.getLocalPort()};
+        }
     }
 
     private static void await(BooleanSupplier condition) throws Exception {
