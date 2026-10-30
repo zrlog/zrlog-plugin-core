@@ -214,7 +214,15 @@ public class SchedulerRuntimeTest {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         AutomationStore automationStore = new AutomationStore(kvStore);
         AutomationRunStore runStore = new AutomationRunStore(kvStore);
-        CapabilityStore capabilityStore = new CapabilityStore(kvStore);
+        // This test verifies the batch-size cap. Its immediate fake invocations must not
+        // reserve the default ten-minute capability timeout and impose a wall-clock limit.
+        CapabilityStore capabilityStore = new CapabilityStore(kvStore) {
+            @Override public Optional<PluginCapability> find(String pluginId, String key) {
+                PluginCapability result = capability(pluginId, key, "scheduler");
+                result.setTimeoutSeconds(1);
+                return Optional.of(result);
+            }
+        };
         int automationCount = SchedulerRuntime.maxTickTasks() + 16;
         assertEquals(64, SchedulerRuntime.maxTickTasks());
         List<PluginAutomation> automations = dueAutomationsWithDistinctLockStripes(automationCount);

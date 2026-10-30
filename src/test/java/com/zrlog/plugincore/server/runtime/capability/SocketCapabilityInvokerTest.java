@@ -12,6 +12,7 @@ import org.junit.Test;
 
 import java.time.Duration;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
@@ -112,6 +113,7 @@ public class SocketCapabilityInvokerTest {
             CapabilityInvokeResult result = h.invoke();
             assertFalse(result.isSuccess()); assertTrue(result.isExecutionCompleted());
             assertTrue(h.session.isClosed()); assertEquals(1, h.cancelled.get()); assertEquals(1, h.stopped.get());
+            assertEquals(List.of("cancel", "stop"), h.protocolEvents);
         }
     }
 
@@ -190,6 +192,7 @@ public class SocketCapabilityInvokerTest {
     }
     private static final class Harness implements AutoCloseable {
         final AtomicInteger cancelled = new AtomicInteger(), stopped = new AtomicInteger(), invocations = new AtomicInteger();
+        final List<String> protocolEvents = new CopyOnWriteArrayList<>();
         final InvokeContext context = new InvokeContext();
         boolean acknowledge = true, wrongIdentity, stopConfirmed = true, faas;
         volatile CapabilityInvokeRequest sent;
@@ -204,6 +207,7 @@ public class SocketCapabilityInvokerTest {
                         sent = new Gson().fromJson(packet.getDataStr(), CapabilityInvokeRequest.class);
                         invocations.incrementAndGet(); onInvoke.accept(session, packet);
                     } else {
+                        protocolEvents.add("cancel");
                         cancelled.incrementAndGet();
                         if (acknowledge) {
                             CapabilityCancelRequest cancel = new Gson().fromJson(packet.getDataStr(), CapabilityCancelRequest.class);
@@ -217,6 +221,7 @@ public class SocketCapabilityInvokerTest {
             Plugin plugin = new Plugin(); plugin.setId("plugin"); plugin.setShortName("plugin"); plugin.setCapabilityLifecycleVersion(1); session.setPlugin(plugin);
             invoker = new SocketCapabilityInvoker(Duration.ofMillis(100), (id, context) -> session, (captured, deadline) -> {
                 assertSame(session, captured); assertTrue(session.isClosed()); assertTrue(deadline.remainingMillis() > 0);
+                protocolEvents.add("stop");
                 stopped.incrementAndGet(); return stopConfirmed;
             }, () -> faas);
         }

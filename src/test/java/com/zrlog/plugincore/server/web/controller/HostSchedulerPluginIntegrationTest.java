@@ -1,6 +1,13 @@
 package com.zrlog.plugincore.server.web.controller;
 
+import com.google.gson.Gson;
 import com.google.gson.JsonParser;
+import com.zrlog.plugin.common.IdUtil;
+import com.zrlog.plugin.message.CapabilityCancelRequest;
+import com.zrlog.plugin.message.CapabilityCancelResult;
+import com.zrlog.plugin.message.CapabilityInvokeRequest;
+import com.zrlog.plugin.message.CapabilityInvokeResult;
+import com.zrlog.plugin.type.ActionType;
 import com.zrlog.plugin.common.model.BlogRunTime;
 import com.zrlog.plugin.type.RunType;
 import com.zrlog.plugincore.server.runtime.PluginRuntimeBridge;
@@ -51,7 +58,7 @@ public class HostSchedulerPluginIntegrationTest {
         assertViewScenario("early");
     }
 
-    @Test public void cancelledViewWaitsForCleanupAndDiscardsEarlyContent() throws Exception {
+    @Test public void cancelledViewStopsEffectsAndDiscardsEarlyContent() throws Exception {
         assertViewScenario("cooperative");
     }
 
@@ -109,9 +116,9 @@ public class HostSchedulerPluginIntegrationTest {
                 if ("early".equals(mode)) {
                     assertEquals("<aside>公开插件内容</aside>", receipt.get("content").getAsString());
                     assertTrue(Files.exists(root.resolve("completed")));
-                } else { assertFalse(receipt.has("content")); assertTrue(Files.exists(root.resolve("cancelled"))); }
-                if ("cooperative".equals(mode)) assertTrue(Files.exists(root.resolve("cleanup-completed")));
-                assertEquals(!"uncooperative".equals(mode), ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+                } else { assertFalse(receipt.has("content")); }
+                if ("early".equals(mode)) assertTrue(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+                else assertCancellationSettled(root, pid, "uncooperative".equals(mode), completed.body());
                 String progress = Files.readString(root.resolve("progress"));
                 Thread.sleep(150); assertEquals(progress, Files.readString(root.resolve("progress")));
                 var logs = new com.zrlog.plugincore.server.runtime.invocation.InvocationLogStore(new WebsiteRuntimeKvStore()).list();
@@ -206,8 +213,61 @@ public class HostSchedulerPluginIntegrationTest {
     }
 
     @Test
-    public void cooperativeCancellationFinishesCleanupBeforeHttpReturns() throws Exception {
+    public void cooperativeHandlerStopsEffectsBeforeHttpReturns() throws Exception {
         assertTimeoutScenario(false);
+    }
+
+    @Test
+    public void realSocketCancellationAcknowledgesHandlerCleanupWithoutStoppingProcess() throws Exception {
+        Path root = temporary.newFolder().toPath();
+        var config = new PluginConfig(RunType.BLOG, null, freePorts()[0], root.toString(), new BlogRunTime());
+        var services = PluginRuntimeServices.create(config,
+                new PluginHostConnection("http://127.0.0.1:1", "integration-host-secret", "", "", true));
+        var socketServer = new PluginCoreSocketServer(config, services.pluginBootstrap());
+        Thread socketThread = new Thread(socketServer::listen, "integration-sdk-cancellation");
+        try (var database = InMemoryPluginCoreDatabase.open()) {
+            try {
+                PluginRuntimeBridge.install(services);
+                assertTrue(socketServer.create()); socketThread.start();
+                services.pluginBootstrap().loadPlugin(pluginJar(root).toFile(), SchedulerFixturePlugin.ID, RuntimeDeadline.afterMillis(10000));
+                await(() -> services.pluginSessions().isReadyByPluginId(SchedulerFixturePlugin.ID));
+                var session = services.pluginSessions().getReadyLocalSessionByPluginId(SchedulerFixturePlugin.ID);
+                long pid = services.pluginSessions().processId(session);
+                var request = new CapabilityInvokeRequest();
+                request.setPluginId(SchedulerFixturePlugin.ID); request.setCapabilityKey(SchedulerFixturePlugin.CAPABILITY);
+                request.setRequestId("direct-cancellation"); request.setRequireCompletion(true);
+                request.setDeadlineEpochMillis(System.currentTimeMillis() + 30000);
+                request.setPayload(Map.of("directory", root.toString(), "mode", "cooperative"));
+                int invocationId = IdUtil.getInt();
+                session.sendJsonRequest(request, ActionType.CAPABILITY_INVOKE.name(), invocationId, Duration.ofSeconds(10));
+                await(() -> Files.exists(root.resolve("started.json")));
+                var cancel = new CapabilityCancelRequest();
+                cancel.setInvocationMessageId(invocationId); cancel.setRequestId(request.getRequestId());
+                int cancellationId = IdUtil.getInt();
+                session.sendJsonRequest(cancel, ActionType.CAPABILITY_CANCEL.name(), cancellationId, Duration.ofSeconds(10));
+                try (var lease = session.getResponseLeaseByMsgId(cancellationId, Duration.ofSeconds(10))) {
+                    assertNotNull("Plugin did not acknowledge cancellation", lease);
+                    var receipt = new Gson().fromJson(lease.getPacket().getDataStr(), CapabilityCancelResult.class);
+                    assertEquals(request.getRequestId(), receipt.getRequestId());
+                    assertTrue(receipt.isExecutionCompleted());
+                    assertTrue(Files.exists(root.resolve("cancelled")));
+                    assertTrue(Files.exists(root.resolve("cleanup-completed")));
+                }
+                try (var lease = session.getResponseLeaseByMsgId(invocationId, Duration.ofSeconds(10))) {
+                    assertNotNull(lease);
+                    var result = new Gson().fromJson(lease.getPacket().getDataStr(), CapabilityInvokeResult.class);
+                    assertTrue(result.isExecutionCompleted()); assertTrue(result.isOutcomeUncertain()); assertFalse(result.isSuccess());
+                }
+                assertTrue(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+                String progress = Files.readString(root.resolve("progress"));
+                Thread.sleep(150); assertEquals(progress, Files.readString(root.resolve("progress")));
+            } finally {
+                Files.writeString(root.resolve("release"), "cleanup");
+                services.shutdown(); socketServer.destroy("SDK cancellation complete"); socketThread.join(5000);
+                PluginRuntimeBridge.install(PluginRuntimeServices.unconfigured());
+            }
+        }
+        assertFalse(socketThread.isAlive());
     }
 
     @Test
@@ -219,13 +279,23 @@ public class HostSchedulerPluginIntegrationTest {
     public void hostRefreshWaitsForEventHandlerCompletion() throws Exception { assertCacheRefresh("early"); }
 
     @Test
-    public void hostRefreshCancellationWaitsForCleanup() throws Exception { assertCacheRefresh("cooperative"); }
+    public void hostRefreshCancellationStopsEffectsBeforeReturning() throws Exception { assertCacheRefresh("cooperative"); }
 
     @Test
     public void hostRefreshStopsAnUncooperativeHandlerBeforeReturning() throws Exception { assertCacheRefresh("uncooperative"); }
 
+    @Test
+    public void hostRefreshStopsPluginThatNeverDispatchesCancellation() throws Exception {
+        assertCacheRefresh("uncooperative", true);
+    }
+
     private void assertCacheRefresh(String mode) throws Exception {
+        assertCacheRefresh(mode, false);
+    }
+
+    private void assertCacheRefresh(String mode, boolean ignoreCancellation) throws Exception {
         Path root = temporary.newFolder().toPath();
+        if (ignoreCancellation) Files.createFile(root.resolve("ignore-cancellation"));
         int[] ports = freePorts();
         int socketPort = ports[0], httpPort = ports[1];
         var config = new PluginConfig(RunType.BLOG, null, socketPort, root.toString(), new BlogRunTime());
@@ -266,13 +336,9 @@ public class HostSchedulerPluginIntegrationTest {
                 assertEquals("early".equals(mode), receipt.get("completed").getAsBoolean());
                 assertEquals(!"early".equals(mode), receipt.get("outcomeUncertain").getAsBoolean());
                 if ("early".equals(mode)) assertEquals("0000000001.00000001793297580247.94783943-99bf-4773-89bc-5883a479898b", Files.readString(root.resolve("completed")));
-                else assertTrue("Cancellation was not observed: mode=" + mode + ", receipt=" + completed.body()
-                        + ", processAlive=" + ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)
-                        + ", fixtureFailure=" + (Files.exists(root.resolve("fixture-failure"))
-                        ? Files.readString(root.resolve("fixture-failure")) : "none"),
-                        Files.exists(root.resolve("cancelled")));
-                if ("cooperative".equals(mode)) assertTrue(Files.exists(root.resolve("cleanup-completed")));
-                assertEquals(!"uncooperative".equals(mode), ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
+                else assertCancellationSettled(root, pid, "uncooperative".equals(mode), completed.body());
+                if (ignoreCancellation) assertFalse(Files.exists(root.resolve("cancelled")));
+                if ("early".equals(mode)) assertTrue(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
                 String progress = Files.readString(root.resolve("progress"));
                 Thread.sleep(150);
                 assertEquals(progress, Files.readString(root.resolve("progress")));
@@ -326,13 +392,7 @@ public class HostSchedulerPluginIntegrationTest {
                 for (var child : result.getAsJsonArray("children")) assertEquals("uncertain", child.getAsJsonObject().get("status").getAsString());
                 for (var run : runs.list()) assertEquals("uncertain", run.getStatus());
                 for (var saved : tasks.list()) assertEquals(Boolean.FALSE, saved.getEnabled());
-                assertTrue(Files.exists(first.resolve("cancelled")));
-                if (uncooperative) {
-                    assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
-                } else {
-                    assertTrue(Files.exists(first.resolve("cleanup-completed")));
-                    assertTrue(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
-                }
+                assertCancellationSettled(first, pid, uncooperative, completed.body());
                 String firstProgress = Files.readString(first.resolve("progress"));
                 String otherProgress = uncooperative ? Files.readString(other.resolve("progress")) : null;
                 Thread.sleep(200);
@@ -394,6 +454,19 @@ public class HostSchedulerPluginIntegrationTest {
         // Hold both reservations together so the OS cannot return the same released port twice.
         try (ServerSocket socket = new ServerSocket(0); ServerSocket http = new ServerSocket(0)) {
             return new int[]{socket.getLocalPort(), http.getLocalPort()};
+        }
+    }
+
+    private static void assertCancellationSettled(Path directory, long pid, boolean requireProcessStop, String receipt) throws Exception {
+        boolean alive = ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+        String diagnostic = "receipt=" + receipt + ", processAlive=" + alive + ", fixtureFailure="
+                + (Files.exists(directory.resolve("fixture-failure")) ? Files.readString(directory.resolve("fixture-failure")) : "none");
+        if (requireProcessStop) assertFalse(diagnostic, alive);
+        // Even a cooperative child may miss the production grace period under instrumentation.
+        // The HTTP contract permits returning only after cleanup or confirmed process death.
+        if (alive) {
+            assertTrue(diagnostic, Files.exists(directory.resolve("cancelled")));
+            assertTrue(diagnostic, Files.exists(directory.resolve("cleanup-completed")));
         }
     }
 
