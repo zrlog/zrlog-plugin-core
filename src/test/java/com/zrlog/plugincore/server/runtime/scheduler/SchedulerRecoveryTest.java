@@ -1,5 +1,6 @@
 package com.zrlog.plugincore.server.runtime.scheduler;
 
+import com.google.gson.Gson;
 import com.zrlog.plugin.common.BasicCronParser;
 import com.zrlog.plugin.message.CapabilityInvokeResult;
 import com.zrlog.plugin.message.PluginCapability;
@@ -122,13 +123,27 @@ public class SchedulerRecoveryTest {
     @Test
     public void completedHistoryRetentionKeepsUnfinishedRun() {
         runs.begin(running("still-running"));
-        for (int i = 0; i < 505; i++) {
+        AutomationRunDocument initial = runs.loadDocument();
+        for (int i = 0; i < 500; i++) {
+            PluginAutomationRun run = running("completed-" + i);
+            run.setStatus("success");
+            initial.getItems().add(run);
+        }
+        // Seed a full history once, then exercise repeated overflow through real appends.
+        runs.saveDocument(initial);
+        for (int i = 500; i < 505; i++) {
             PluginAutomationRun run = running("completed-" + i);
             run.setStatus("success");
             runs.append(run);
         }
-        assertEquals(501, runs.list().size());
-        assertEquals("running", runs.find("still-running").get().getStatus());
+        AutomationRunDocument persisted = new Gson().fromJson(
+                kv.get(AutomationRunStore.KEY).get(), AutomationRunDocument.class);
+        assertEquals(501, persisted.getItems().size());
+        assertEquals("still-running", persisted.getItems().get(0).getId());
+        assertEquals("running", persisted.getItems().get(0).getStatus());
+        assertEquals("completed-5", persisted.getItems().get(1).getId());
+        assertEquals("completed-504", persisted.getItems().get(500).getId());
+        assertEquals("running", new AutomationRunStore(kv).find("still-running").get().getStatus());
     }
 
     @Test
