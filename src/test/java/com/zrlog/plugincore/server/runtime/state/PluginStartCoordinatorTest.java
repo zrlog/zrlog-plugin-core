@@ -1,5 +1,6 @@
 package com.zrlog.plugincore.server.runtime.state;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -13,6 +14,46 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class PluginStartCoordinatorTest {
+
+    @Test(timeout = 5000)
+    public void deadlineBoundsOperationCapacityAndSharedStartWaits() throws Exception {
+        for (String waitingOn : new String[]{"operation", "capacity", "existing-start"}) {
+            PluginStartCoordinator coordinator = new PluginStartCoordinator();
+            CountDownLatch entered = new CountDownLatch(1);
+            CountDownLatch release = new CountDownLatch(1);
+            AtomicBoolean ownerResult = new AtomicBoolean();
+            java.util.function.BooleanSupplier holdingAction = () -> {
+                entered.countDown();
+                await(release);
+                return true;
+            };
+            Thread owner = new Thread(() -> {
+                if ("operation".equals(waitingOn)) {
+                    ownerResult.set(coordinator.withPluginOperation("target", 30000, holdingAction));
+                } else {
+                    ownerResult.set(coordinator.start("capacity".equals(waitingOn) ? "other" : "target",
+                            1, 30000, 30000, 0, holdingAction));
+                }
+            });
+            AtomicInteger attemptedStarts = new AtomicInteger();
+            try {
+                owner.start();
+                assertTrue(entered.await(1, TimeUnit.SECONDS));
+                long startedAt = System.nanoTime();
+                assertFalse(waitingOn, coordinator.start("target", 1, 30000, 30000, 0,
+                        RuntimeDeadline.afterMillis(150), () -> attemptedStarts.incrementAndGet() > 0));
+                assertTrue(waitingOn, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1000);
+                assertEquals(waitingOn, 0, attemptedStarts.get());
+            } finally {
+                release.countDown();
+                owner.join(1000);
+            }
+            assertFalse(owner.isAlive());
+            assertTrue("timed-out waiter must not cancel the owner", ownerResult.get());
+            assertTrue("timed-out wait must release its reservation", coordinator.start("target",
+                    1, 1000, 1000, 0, RuntimeDeadline.afterMillis(500), () -> true));
+        }
+    }
 
     @Test
     public void shouldCollapseConcurrentStartsForSamePlugin() throws Exception {

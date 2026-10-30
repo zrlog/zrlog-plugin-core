@@ -8,6 +8,10 @@ public class RuntimeEventPublishResult {
     private int successCount;
     private int failedCount;
     private int handlerCount;
+    private boolean outcomeUncertain;
+
+    public boolean isOutcomeUncertain() { return outcomeUncertain; }
+    public void setOutcomeUncertain(boolean outcomeUncertain) { this.outcomeUncertain = outcomeUncertain; }
     private Set<String> handlerPluginIds = new LinkedHashSet<>();
 
     public int getSuccessCount() {

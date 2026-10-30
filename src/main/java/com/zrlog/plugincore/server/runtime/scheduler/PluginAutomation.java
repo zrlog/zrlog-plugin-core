@@ -13,6 +13,8 @@ public class PluginAutomation {
     private String cron;
     private String timezone;
     private Boolean enabled;
+    private boolean reviewRequired;
+    private String reviewRunId;
     private Boolean system;
     private Boolean deletable;
     private Long nextRunAt;
@@ -20,6 +22,14 @@ public class PluginAutomation {
     private String leaseOwner;
     private String leaseUntil;
     private Map<String, Object> payload = new HashMap<>();
+
+    public boolean isReviewRequired() { return reviewRequired; }
+
+    public void setReviewRequired(boolean reviewRequired) { this.reviewRequired = reviewRequired; }
+
+    public String getReviewRunId() { return reviewRunId; }
+
+    public void setReviewRunId(String reviewRunId) { this.reviewRunId = reviewRunId; }
 
     public String getId() {
         return id;

@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.state;
 
 import java.util.Optional;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 
 public interface PluginRuntimeStarter {
 
@@ -37,6 +38,19 @@ public interface PluginRuntimeStarter {
 
     default boolean isStartViable(PluginIdentity identity) {
         return true;
+    }
+
+    default void start(PluginIdentity identity, RuntimeDeadline deadline) {
+        deadline.check();
+        start(identity);
+        deadline.check();
+    }
+
+    default void cleanupStartFailure(PluginIdentity identity, RuntimeDeadline deadline) { cleanupStartFailure(identity); }
+
+    default boolean reclaimIdleCapacity(PluginIdentity identity, RuntimeDeadline deadline) {
+        deadline.check();
+        return reclaimIdleCapacity(identity);
     }
 
     void start(PluginIdentity identity);

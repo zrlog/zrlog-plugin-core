@@ -22,9 +22,18 @@ public class SchedulerTickService {
             return new SchedulerTickResult();
         }
         if (schedulerSetting != null) {
+            if ((schedulerSetting.getHostDriven() || com.zrlog.plugincore.server.runtime.PluginRuntimeBridge.hostConnection().isHostSchedulerDriven())
+                    && (source == null || source.trim().isEmpty() || RuntimeSources.SCHEDULER.equals(source.trim()))) {
+                return schedulerRuntime.tickMaintenance(now);
+            }
             schedulerSetting.ensureDefaultProvider();
         }
         return schedulerRuntime.tick(now, source);
+    }
+
+    public SchedulerTickResult tickFromHost(java.time.ZonedDateTime now, String triggerId, int actorId, long budgetMillis) {
+        if (PluginCoreRunMode.isNativeAgent()) return new SchedulerTickResult();
+        return schedulerRuntime.tickFromHost(now, triggerId, actorId, budgetMillis);
     }
 
     public PluginAutomationRun runNow(String automationId, java.time.ZonedDateTime now) {

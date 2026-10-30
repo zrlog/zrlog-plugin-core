@@ -2,6 +2,7 @@ package com.zrlog.plugincore.server.runtime.plugin.bootstrap;
 
 import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.common.LoggerUtil;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugin.message.Plugin;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
@@ -193,6 +194,16 @@ public class PluginBootstrapService {
             return;
         }
         pluginStartupCoordinator.loadPlugin(pluginFile, pluginId);
+    }
+
+    public void loadPlugin(File pluginFile, String pluginId, RuntimeDeadline deadline) {
+        if (!deadline.isBounded()) { loadPlugin(pluginFile, pluginId); return; }
+        deadline.check();
+        if (!shutdown.get()) pluginStartupCoordinator.loadPlugin(pluginFile, pluginId, deadline);
+    }
+
+    public boolean stopPlugin(String pluginId, String pluginShortName, RuntimeDeadline deadline) {
+        return pluginStartupCoordinator.destroyByPluginId(pluginId, pluginShortName, deadline);
     }
 
     public boolean startPluginFileForMetadata(File pluginFile) {

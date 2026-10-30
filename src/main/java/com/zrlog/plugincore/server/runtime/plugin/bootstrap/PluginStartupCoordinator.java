@@ -1,6 +1,7 @@
 package com.zrlog.plugincore.server.runtime.plugin.bootstrap;
 
 import com.zrlog.plugin.common.LoggerUtil;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import com.zrlog.plugincore.server.model.PluginCore;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.runtime.plugin.log.PluginLogContext;
@@ -38,6 +39,14 @@ public class PluginStartupCoordinator {
 
     public void loadPlugin(final File pluginFile, String pluginId) {
         processRuntime.loadPlugin(pluginFile, pluginId);
+    }
+
+    public void loadPlugin(File pluginFile, String pluginId, RuntimeDeadline deadline) {
+        processRuntime.loadPlugin(pluginFile, pluginId, deadline);
+    }
+
+    public boolean destroyByPluginId(String pluginId, String pluginShortName, RuntimeDeadline deadline) {
+        return processRuntime.destroyByPluginId(pluginId, pluginShortName, deadline);
     }
 
     public boolean hasManagedProcessSlot(String pluginId, String pluginShortName) {

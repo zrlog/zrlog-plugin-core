@@ -59,7 +59,8 @@ public class SchedulerRuntimeTest {
         assertEquals(1, runStore.list().size());
         assertEquals("success", runStore.list().get(0).getStatus());
         assertEquals("scheduler", new InvocationLogStore(kvStore).list().get(0).getSource());
-        assertEquals(Long.valueOf(SchedulerTimes.millis(now())), automationStore.list().get(0).getLastRunAt());
+        assertTrue(automationStore.list().get(0).getLastRunAt() >= SchedulerTimes.millis(now()));
+        assertTrue(automationStore.list().get(0).getLastRunAt() < SchedulerTimes.millis(now().plusSeconds(30)));
         assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(5))), automationStore.list().get(0).getNextRunAt());
     }
 
@@ -131,7 +132,8 @@ public class SchedulerRuntimeTest {
         assertEquals("success", run.getStatus());
         assertEquals(1, runStore.list().size());
         assertEquals("tick", new InvocationLogStore(kvStore).list().get(0).getSource());
-        assertEquals(Long.valueOf(SchedulerTimes.millis(now())), automationStore.list().get(0).getLastRunAt());
+        assertTrue(automationStore.list().get(0).getLastRunAt() >= SchedulerTimes.millis(now()));
+        assertTrue(automationStore.list().get(0).getLastRunAt() < SchedulerTimes.millis(now().plusSeconds(30)));
         assertEquals(Long.valueOf(SchedulerTimes.millis(now().plusMinutes(30))), automationStore.list().get(0).getNextRunAt());
     }
 

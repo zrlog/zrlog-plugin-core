@@ -25,6 +25,16 @@ public class PluginHttpServer {
         config = currentConfig;
         WebServerBuilder build = new WebServerBuilder.Builder().config(currentConfig).build();
         if (nativeAgent) {
+            // Agent mode scans routes without the normal ApplicationContext initialization.
+            // Register the same interceptors that enforce authentication in the real server.
+            for (Class<?> interceptor : currentConfig.getServerConfig().getInterceptors()) {
+                try {
+                    interceptor.getDeclaredConstructor().newInstance();
+                } catch (ReflectiveOperationException error) {
+                    shutdownExecutors(currentConfig);
+                    throw new IllegalStateException("Unable to register HTTP interceptor " + interceptor.getName(), error);
+                }
+            }
             currentConfig.getServerConfig().addCreateSuccessHandle(() -> {
                 Thread.sleep(5000);
                 System.exit(0);

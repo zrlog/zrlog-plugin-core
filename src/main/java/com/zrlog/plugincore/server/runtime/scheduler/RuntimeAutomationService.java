@@ -163,8 +163,12 @@ public class RuntimeAutomationService {
     }
 
     public PluginAutomation save(PluginAutomation input, ZonedDateTime now) {
+        return save(input, now, null);
+    }
+
+    public PluginAutomation save(PluginAutomation input, ZonedDateTime now, String reviewedRunId) {
         if (RuntimeSystemAutomations.isRuntimeMaintenance(input)) {
-            return saveSystemAutomation(input, now);
+            return saveSystemAutomation(input, now, reviewedRunId);
         }
         if (input == null) {
             throw new CronParseException("Automation is empty");
@@ -179,6 +183,7 @@ public class RuntimeAutomationService {
             AutomationStore.AutomationDocumentSnapshot snapshot = automationStore.loadSnapshot();
             PluginAutomation candidate = copyAutomation(baseInput);
             preserveExistingCapabilityBinding(candidate, snapshot.getDocument().getItems());
+            requireReviewConfirmation(candidate, snapshot.getDocument().getItems(), reviewedRunId);
             validate(candidate);
             PluginCapability capability = CapabilityStore.find(
                     registeredCapabilities, candidate.getPluginId(), candidate.getCapabilityKey())
@@ -203,10 +208,10 @@ public class RuntimeAutomationService {
         PluginAutomation input = new PluginAutomation();
         input.setId(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID);
         input.setPayload(RuntimeSystemAutomations.runtimePayload(runtimeSetting));
-        return saveSystemAutomation(input, now);
+        return saveSystemAutomation(input, now, null);
     }
 
-    private PluginAutomation saveSystemAutomation(PluginAutomation input, ZonedDateTime now) {
+    private PluginAutomation saveSystemAutomation(PluginAutomation input, ZonedDateTime now, String reviewedRunId) {
         ZoneId zoneId = ZoneId.systemDefault();
         if (now == null) {
             now = ZonedDateTime.now(zoneId);
@@ -215,6 +220,7 @@ public class RuntimeAutomationService {
         for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
             AutomationStore.AutomationDocumentSnapshot snapshot = automationStore.loadSnapshot();
             List<PluginAutomation> automations = new ArrayList<>(snapshot.getDocument().getItems());
+            requireReviewConfirmation(baseInput, automations, reviewedRunId);
             PluginAutomation saved = copyAutomation(baseInput);
             List<PluginAutomation> next = new ArrayList<>();
             boolean replaced = false;
@@ -222,6 +228,8 @@ public class RuntimeAutomationService {
                 if (RuntimeSystemAutomations.isRuntimeMaintenance(old)) {
                     if (!replaced) {
                         saved.setLastRunAt(old.getLastRunAt());
+                        saved.setLeaseOwner(old.getLeaseOwner());
+                        saved.setLeaseUntil(old.getLeaseUntil());
                         next.add(saved);
                         replaced = true;
                     }
@@ -247,6 +255,15 @@ public class RuntimeAutomationService {
 
     private void updateRuntimeSetting(PluginAutomation automation) {
         runtimeSettingUpdater.accept(RuntimeSystemAutomations.runtimeSettingFromPayload(automation.getPayload()));
+    }
+
+    private void requireReviewConfirmation(PluginAutomation input, List<PluginAutomation> items, String reviewedRunId) {
+        for (PluginAutomation item : items) {
+            if (item.isReviewRequired() && (Objects.equals(input.getId(), item.getId()) || sameCapability(input, item))
+                    && (reviewedRunId == null || !reviewedRunId.equals(item.getReviewRunId()))) {
+                throw new CronParseException("Review the previous execution outcome and explicitly confirm before saving this task.");
+            }
+        }
     }
 
     private static void persistRuntimeSetting(PluginRuntimeSetting runtimeSetting) {
@@ -276,6 +293,10 @@ public class RuntimeAutomationService {
         for (int i = 0; i < STORE_UPDATE_RETRIES; i++) {
             AutomationStore.AutomationDocumentSnapshot snapshot = automationStore.loadSnapshot();
             List<PluginAutomation> automations = new ArrayList<>(snapshot.getDocument().getItems());
+            if (automations.stream().anyMatch(item -> Objects.equals(id, item.getId())
+                    && item.getLeaseOwner() != null)) {
+                throw new CronParseException("Automation has an unfinished run. Wait for its outcome before deleting it.");
+            }
             boolean removed = automations.removeIf(item -> Objects.equals(id, item.getId()));
             if (!removed) {
                 return false;
@@ -299,6 +320,8 @@ public class RuntimeAutomationService {
             id = existingAutomationId(automations, input).orElse(UUID.randomUUID().toString());
         }
         input.setId(id);
+        input.setReviewRequired(false);
+        input.setReviewRunId(null);
         input.setTriggerType("cron");
         input.setTimezone(zoneId.getId());
         if (input.getEnabled() == null) {
@@ -320,6 +343,8 @@ public class RuntimeAutomationService {
                         input.setCapabilityKey(old.getCapabilityKey());
                     }
                     input.setLastRunAt(old.getLastRunAt());
+                    input.setLeaseOwner(old.getLeaseOwner());
+                    input.setLeaseUntil(old.getLeaseUntil());
                     next.add(input);
                     saved = true;
                 }
@@ -481,6 +506,8 @@ public class RuntimeAutomationService {
         target.setCron(source.getCron());
         target.setTimezone(source.getTimezone());
         target.setEnabled(source.getEnabled());
+        target.setReviewRequired(source.isReviewRequired());
+        target.setReviewRunId(source.getReviewRunId());
         target.setSystem(source.getSystem());
         target.setDeletable(source.getDeletable());
         target.setNextRunAt(source.getNextRunAt());
@@ -520,6 +547,8 @@ public class RuntimeAutomationService {
                 && Objects.equals(left.getCron(), right.getCron())
                 && Objects.equals(left.getTimezone(), right.getTimezone())
                 && Objects.equals(left.getEnabled(), right.getEnabled())
+                && left.isReviewRequired() == right.isReviewRequired()
+                && Objects.equals(left.getReviewRunId(), right.getReviewRunId())
                 && Objects.equals(left.getSystem(), right.getSystem())
                 && Objects.equals(left.getDeletable(), right.getDeletable())
                 && Objects.equals(left.getNextRunAt(), right.getNextRunAt())

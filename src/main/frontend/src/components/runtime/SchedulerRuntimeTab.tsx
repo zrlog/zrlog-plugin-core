@@ -1,6 +1,6 @@
 import {getRes, formatText} from "../../i18n/plugin";
 import React, {useEffect, useMemo, useState} from "react";
-import {Button, Drawer, Form, Grid, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, message} from "antd";
+import {Button, Checkbox, Drawer, Form, Grid, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, message} from "antd";
 import {CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, KeyOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined} from "@ant-design/icons";
 import type {ColumnsType} from "antd/es/table";
 import axios from "axios";
@@ -178,6 +178,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
 
     useEffect(() => {
         loadData();
+        loadSchedulerSettings();
     }, []);
 
     const copyText = async (text: string) => {
@@ -241,6 +242,7 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             capability: `${automation.pluginId}@@${automation.capabilityKey}`,
             cron: automation.cron,
             enabled: automation.enabled !== false,
+            reviewConfirmed: false,
             maintenanceLoadStrategy: maintenancePayload.onDemandEnabled ? "onDemand" : "startup",
             maintenanceAutoDownloadMissingPluginFileEnabled: maintenancePayload.autoDownloadMissingPluginFileEnabled,
             maintenanceIdleStopEnabled: maintenancePayload.idleStopEnabled,
@@ -254,7 +256,8 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
     };
 
     const saveAutomation = async () => {
-        const values = await form.validateFields();
+        const values = await form.validateFields().catch(() => undefined);
+        if (!values) return;
         const systemRuntimeMaintenance = editing ? isRuntimeMaintenanceAutomation(editing) : false;
         const legacyCustomRuntimeMaintenance = systemRuntimeMaintenance && !hasExplicitRuntimeMaintenanceInterval(editing);
         const onDemandEnabled = values.maintenanceLoadStrategy !== "startup";
@@ -293,6 +296,8 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         }
         params.set("enabled", String(systemRuntimeMaintenance ? true : values.enabled));
         params.set("payload", payload);
+        params.set("reviewConfirmed", String(values.reviewConfirmed === true));
+        if (values.reviewConfirmed === true && editing?.reviewRunId) params.set("reviewRunId", editing.reviewRunId);
         const url = editing?.id ? "/runtime-automations/update" : "/runtime-automations";
         const {data: resp} = await axios.post(apiPath(url), params.toString());
         if (resp.code > 0) {
@@ -366,7 +371,8 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
         const lastRunLabel = formatText(getRes().runtimeScheduler.lastRun, {time: formatEpoch(automation.lastRunAt)});
         return timeoutLabel ? `${lastRunLabel} · ${timeoutLabel}` : lastRunLabel;
     };
-    const automationStatusTag = (automation: Automation) => isSystemAutomation(automation)
+    const automationStatusTag = (automation: Automation) => automation.reviewRequired
+        ? <Tag color="warning">{getRes().runtimeScheduler.uncertain}</Tag> : isSystemAutomation(automation)
         ? <Tag color="processing">{getRes().common.system}</Tag>
         : automation.enabled === false ? <Tag>{getRes().runtimeScheduler.disabled}</Tag> : <Tag color="success">{getRes().runtimeScheduler.enabled}</Tag>;
     const automationTaskCell = (automation: Automation) => (
@@ -391,7 +397,12 @@ const SchedulerRuntimeTab: React.FC<Props> = () => {
             )}
         </Space>
     );
-    const runStatusTag = (value: string) => value === "success" ? <Tag color="success">{getRes().common.success}</Tag> : <Tag color="error">{getRes().common.failure}</Tag>;
+    const runStatusTag = (value: string) => {
+        if (value === "running") return <Tag color="processing">{getRes().runtimeScheduler.running}</Tag>;
+        if (value === "uncertain") return <Tag color="warning">{getRes().runtimeScheduler.uncertain}</Tag>;
+        return value === "success" ? <Tag color="success">{getRes().common.success}</Tag>
+            : <Tag color="error">{getRes().common.failure}</Tag>;
+    };
     const automationRunCell = (run: AutomationRun) => (
         <Space direction="vertical" size={8} style={{width: "100%", minWidth: 0}}>
             {renderPlugin(
@@ -512,7 +523,7 @@ crons = ["*/5 * * * *"]`;
                             size="small"
                             aria-label={getRes().runtimeScheduler.runNow}
                             icon={<PlayCircleOutlined />}
-                            disabled={!record.id}
+                            disabled={!record.id || record.reviewRequired}
                             loading={runningAutomations[automationKey(record)]}
                             onClick={() => runAutomationNow(record)}
                         >
@@ -576,6 +587,10 @@ crons = ["*/5 * * * *"]`;
     return (
         <Space direction="vertical" size={16} style={{width: "100%"}}>
             {contextHolder}
+            {settingsLoaded && settings.hostDriven && <Space direction="vertical" size={4}>
+                <Text strong>{getRes().runtimeScheduler.hostDriven}</Text>
+                <Text type="secondary">{getRes().runtimeScheduler.hostDrivenHelp}</Text>
+            </Space>}
             <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
                 <Space>
                     <Text strong>{getRes().runtimeScheduler.tasks}</Text>
@@ -704,6 +719,10 @@ crons = ["*/5 * * * *"]`;
                 styles={{body: {maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: 4}}}
             >
                 <Form form={form} layout="vertical">
+                    {editing?.reviewRequired && <Form.Item name="reviewConfirmed" valuePropName="checked"
+                        rules={[{validator: (_, value) => value === true ? Promise.resolve() : Promise.reject(new Error(getRes().runtimeScheduler.reviewConfirmation))}]}>
+                        <Checkbox>{getRes().runtimeScheduler.reviewConfirmation}</Checkbox>
+                    </Form.Item>}
                     <Form.Item label={getRes().runtimeScheduler.taskName} name="name" rules={[{required: true, message: getRes().runtimeScheduler.nameRequired}]}>
                         <Input disabled={editingSystemAutomation} />
                     </Form.Item>

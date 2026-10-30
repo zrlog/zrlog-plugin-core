@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.runtime.state;
 
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
+
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,9 +38,14 @@ public final class PluginStartCoordinator {
                          long inFlightWaitTimeoutMs,
                          long failureBackoffMs,
                          BooleanSupplier startAction) {
-        if (shutdown.get()) {
-            return false;
-        }
+        return start(pluginId, maxConcurrentStarts, capacityWaitTimeoutMs, inFlightWaitTimeoutMs,
+                failureBackoffMs, RuntimeDeadline.unlimited(), startAction);
+    }
+
+    public boolean start(String pluginId, int maxConcurrentStarts, long capacityWaitTimeoutMs,
+                         long inFlightWaitTimeoutMs, long failureBackoffMs, RuntimeDeadline deadline,
+                         BooleanSupplier startAction) {
+        if (shutdown.get() || deadline.remainingMillis() == 0) return false;
         cleanupExpiredEntries(System.currentTimeMillis());
         if (isCoolingDown(pluginId)) {
             return false;
@@ -46,7 +53,7 @@ public final class PluginStartCoordinator {
         StartOperation ownedOperation = new StartOperation();
         StartOperation existingOperation = inFlightStarts.putIfAbsent(pluginId, ownedOperation);
         if (existingOperation != null) {
-            return await(existingOperation.result, inFlightWaitTimeoutMs);
+            return await(existingOperation.result, deadline.waitMillis(inFlightWaitTimeoutMs));
         }
         if (shutdown.get() || isCoolingDown(pluginId)) {
             ownedOperation.result.complete(false);
@@ -54,12 +61,12 @@ public final class PluginStartCoordinator {
             return false;
         }
         try {
-            boolean started = withPluginOperation(pluginId, inFlightWaitTimeoutMs, () -> {
-                if (shutdown.get() || ownedOperation.cancelled.get() || isCoolingDown(pluginId)) {
+            boolean started = withPluginOperation(pluginId, deadline.waitMillis(inFlightWaitTimeoutMs), () -> {
+                if (shutdown.get() || deadline.remainingMillis() == 0 || ownedOperation.cancelled.get() || isCoolingDown(pluginId)) {
                     return false;
                 }
-                return withCapacity(maxConcurrentStarts, capacityWaitTimeoutMs, () -> {
-                    if (shutdown.get() || ownedOperation.cancelled.get()) {
+                return withCapacity(maxConcurrentStarts, deadline.waitMillis(capacityWaitTimeoutMs), () -> {
+                    if (shutdown.get() || deadline.remainingMillis() == 0 || ownedOperation.cancelled.get()) {
                         return false;
                     }
                     return startAction.getAsBoolean();
@@ -74,6 +81,9 @@ public final class PluginStartCoordinator {
             }
             ownedOperation.result.complete(started);
             return started;
+        } catch (RuntimeDeadline.Expired expired) {
+            ownedOperation.result.complete(false);
+            return false;
         } catch (PluginStartDeferredException e) {
             if (!ownedOperation.cancelled.get() && failureBackoffMs > 0) {
                 retryAfterByPluginId.put(pluginId, System.currentTimeMillis() + failureBackoffMs);
@@ -154,10 +164,11 @@ public final class PluginStartCoordinator {
     }
 
     public boolean withPluginOperation(String pluginId, long waitTimeoutMs, BooleanSupplier action) {
+        if (Thread.currentThread().isInterrupted()) return false;
         ReentrantLock lock = operationLock(pluginId);
         boolean acquired;
         try {
-            acquired = lock.tryLock(Math.max(1L, waitTimeoutMs), TimeUnit.MILLISECONDS);
+            acquired = lock.tryLock(Math.max(0L, waitTimeoutMs), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server;
 
+import com.zrlog.plugin.message.CapabilityCancelResult;
+import com.zrlog.plugin.message.CapabilityCancelRequest;
 import com.google.gson.Gson;
 import com.zrlog.plugin.IOSession;
 import com.zrlog.plugin.MsgPacketDispose;
@@ -193,6 +195,7 @@ final class NativeRuntimeWarmup {
         CountingActionHandler actionHandler = new CountingActionHandler(gson);
         MsgPacketDispose dispose = new MsgPacketDispose();
         dispose.handler(null, packet(new CapabilityInvokeRequest(), ActionType.CAPABILITY_INVOKE), actionHandler);
+        dispose.handler(null, packet(new CapabilityCancelRequest(), ActionType.CAPABILITY_CANCEL), actionHandler);
         dispose.handler(null, packet(new NotificationRequest(), ActionType.NOTIFICATION_PUBLISH), actionHandler);
         dispose.handler(null, packet(new PluginApiModels.EmptyResponse(), ActionType.NOTIFICATION_CHANNEL_QUERY), actionHandler);
         dispose.handler(null, packet(new SchedulerQueryRequest(), ActionType.SCHEDULER_QUERY), actionHandler);
@@ -325,7 +328,25 @@ final class NativeRuntimeWarmup {
         serializeRoundTrip(gson, invocationLogPage);
         serializeRoundTrip(gson, new RuntimeApiModels.ItemResponse<RuntimeApiModels.AutomationResponse>(
                 automationResponses.isEmpty() ? new RuntimeApiModels.AutomationResponse() : automationResponses.get(0)));
-        serializeRoundTrip(gson, new RuntimeApiModels.ResultResponse(new SchedulerTickResult()));
+        SchedulerTickResult tickResult = new SchedulerTickResult();
+        com.zrlog.plugincore.server.runtime.event.HostCacheRefreshResult cacheRefresh =
+                new com.zrlog.plugincore.server.runtime.event.HostCacheRefreshResult();
+        cacheRefresh.triggerId = "native-cache-refresh";
+        cacheRefresh.cacheVersion = "1";
+        cacheRefresh.completed = true;
+        serializeRoundTrip(gson, cacheRefresh);
+        var renderedView = new com.zrlog.plugincore.server.runtime.event.HostViewResult();
+        renderedView.triggerId = "native-view"; renderedView.requestId = "native-view-invocation";
+        renderedView.content = "<aside>view</aside>"; renderedView.completed = true;
+        serializeRoundTrip(gson, renderedView);
+        com.zrlog.plugincore.server.runtime.scheduler.SchedulerChildResult child =
+                new com.zrlog.plugincore.server.runtime.scheduler.SchedulerChildResult();
+        child.automationId = automationRun.getAutomationId();
+        child.name = "Native task";
+        child.runId = automationRun.getId();
+        child.status = "success";
+        tickResult.getChildren().add(child);
+        serializeRoundTrip(gson, new RuntimeApiModels.ResultResponse(tickResult));
         serializeRoundTrip(gson, RuntimeApiModels.ActionResponse.started());
         serializeRoundTrip(gson, RuntimeApiModels.ActionResponse.removed(true));
         serializeRoundTrip(gson, RuntimeApiModels.ActionResponse.successFlag(true));
@@ -526,6 +547,13 @@ final class NativeRuntimeWarmup {
 
         private CountingActionHandler(Gson gson) {
             this.gson = gson;
+        }
+
+        @Override
+        public void capabilityCancel(IOSession session, MsgPacket msgPacket) {
+            gson.toJson(msgPacket.convertToClass(CapabilityCancelRequest.class));
+            gson.toJson(new CapabilityCancelResult());
+            count++;
         }
 
         @Override

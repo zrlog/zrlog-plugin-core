@@ -17,6 +17,7 @@ export type SchedulerProvider = {
 
 export type SchedulerSettings = {
     enabled: boolean;
+    hostDriven?: boolean;
     externalHost?: string;
     effectiveExternalHost?: string;
     externalTickPath?: string;
@@ -74,6 +75,8 @@ export type Capability = {
 }
 
 export type Automation = {
+    reviewRequired?: boolean;
+    reviewRunId?: string;
     id?: string;
     pluginId: string;
     pluginName?: string;

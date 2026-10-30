@@ -8,8 +8,15 @@ public class PluginHostConnection {
     private final String blogApiHomeUrl;
     private final String nativeInfo;
     private final String contextPath;
+    private final boolean hostSchedulerDriven;
 
     public PluginHostConnection(String apiHomeUrl, String pluginToken, String nativeInfo, String contextPath) {
+        this(apiHomeUrl, pluginToken, nativeInfo, contextPath, false);
+    }
+
+    public PluginHostConnection(String apiHomeUrl, String pluginToken, String nativeInfo, String contextPath,
+                                boolean hostSchedulerDriven) {
+        this.hostSchedulerDriven = hostSchedulerDriven;
         this.blogApiHomeUrl = apiHomeUrl;
         this.blogPluginToken = pluginToken;
         this.nativeInfo = nativeInfo;
@@ -48,6 +55,8 @@ public class PluginHostConnection {
     public String getNativeInfo() {
         return nativeInfo;
     }
+
+    public boolean isHostSchedulerDriven() { return hostSchedulerDriven; }
 
     public String getContextPath() {
         return contextPath;

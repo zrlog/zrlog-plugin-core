@@ -24,6 +24,76 @@ import static org.junit.Assert.fail;
 public class SchedulerTickServiceTest {
 
     @Test
+    public void hostOwnershipStopsInternalScanButAllowsExternalTrigger() {
+        InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+        AutomationRunStore runStore = new AutomationRunStore(kvStore);
+        SchedulerSetting setting = new SchedulerSetting();
+        setting.setHostDriven(true);
+        SchedulerTickService service = new SchedulerTickService(setting, runtime(kvStore, runStore));
+        assertEquals(0, service.tick(now()).getExecutedCount());
+        assertEquals(0, service.tick(now(), null).getExecutedCount());
+        assertEquals(0, runStore.list().size());
+        assertEquals(1, service.tick(now(), com.zrlog.plugincore.server.runtime.capability.RuntimeSources.TICK).getExecutedCount());
+        assertEquals(1, runStore.list().size());
+    }
+
+    @Test
+    public void hostOwnershipStillRunsCoreMaintenanceWithoutRunningPluginBusinessTasks() throws Exception {
+        try (var ignored = com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase.open()) {
+            InMemoryRuntimeKvStore kv = new InMemoryRuntimeKvStore();
+            AutomationRunStore runs = new AutomationRunStore(kv);
+            AutomationStore tasks = new AutomationStore(kv);
+            SchedulerSetting setting = new SchedulerSetting();
+            setting.setHostDriven(true);
+            SchedulerTickService service = new SchedulerTickService(setting, runtime(kv, runs));
+            service.tick(now());
+            var entries = tasks.list();
+            entries.stream().filter(RuntimeSystemAutomations::isRuntimeMaintenance)
+                    .forEach(task -> task.setNextRunAt(SchedulerTimes.millis(now())));
+            tasks.saveAll(entries);
+            assertEquals(1, service.tick(now()).getExecutedCount());
+            assertEquals(1, runs.list().size());
+            assertEquals(RuntimeSystemAutomations.RUNTIME_MAINTENANCE_ID, runs.list().get(0).getAutomationId());
+            assertEquals("success", runs.list().get(0).getStatus());
+            assertEquals(Long.valueOf(SchedulerTimes.millis(now())), tasks.list().stream().filter(task -> "a1".equals(task.getId())).findFirst().get().getNextRunAt());
+            assertEquals(1, service.tick(now(), com.zrlog.plugincore.server.runtime.capability.RuntimeSources.TICK).getExecutedCount());
+            assertEquals(2, runs.list().size());
+        }
+    }
+
+    @Test
+    public void runtimeHostOwnershipStopsBusinessScanWithoutChangingStoredLegacySettings() {
+        var services = com.zrlog.plugincore.server.runtime.PluginRuntimeServices.create(
+                com.zrlog.plugincore.server.runtime.plugin.config.PluginConfig.unconfigured(),
+                new com.zrlog.plugincore.server.runtime.plugin.config.PluginHostConnection("http://localhost", "fixture", "", "", true));
+        com.zrlog.plugincore.server.runtime.PluginRuntimeBridge.install(services);
+        try {
+            InMemoryRuntimeKvStore kv = new InMemoryRuntimeKvStore();
+            AutomationRunStore runs = new AutomationRunStore(kv);
+            SchedulerSetting setting = new SchedulerSetting();
+            SchedulerTickService service = new SchedulerTickService(setting, runtime(kv, runs));
+            assertEquals(0, service.tick(now()).getExecutedCount());
+            assertEquals(0, runs.list().size());
+            assertEquals(Boolean.FALSE, setting.getHostDriven());
+            assertEquals(1, service.tickFromHost(now(), "host-parent", 1, 645000).getExecutedCount());
+            assertEquals("host-parent", runs.list().get(0).getTriggerId());
+        } finally {
+            services.shutdown();
+            com.zrlog.plugincore.server.runtime.PluginRuntimeBridge.install(
+                    com.zrlog.plugincore.server.runtime.PluginRuntimeServices.unconfigured());
+        }
+    }
+
+    @Test
+    public void legacySettingsKeepInternalOwnership() {
+        SchedulerSetting setting = new com.google.gson.Gson().fromJson("{\"enabled\":false}", SchedulerSetting.class);
+        org.junit.Assert.assertFalse(setting.getHostDriven());
+        setting.setHostDriven(true);
+        setting = new com.google.gson.Gson().fromJson(new com.google.gson.Gson().toJson(setting), SchedulerSetting.class);
+        org.junit.Assert.assertTrue(setting.getHostDriven());
+    }
+
+    @Test
     public void shouldSkipTickInNativeAgentMode() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         AutomationRunStore runStore = new AutomationRunStore(kvStore);

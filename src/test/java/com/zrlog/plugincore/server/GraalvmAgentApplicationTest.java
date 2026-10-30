@@ -101,6 +101,6 @@ public class GraalvmAgentApplicationTest {
         assertEquals(1, result.getNotificationSuccessCount());
         assertEquals(0, result.getNotificationFailedCount());
         assertEquals(2, result.getAnnotatedCapabilityCount());
-        assertEquals(9, result.getActionDispatchCount());
+        assertEquals(10, result.getActionDispatchCount());
     }
 }

@@ -5,6 +5,9 @@ import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityInvoker;
 import com.zrlog.plugincore.server.runtime.capability.CapabilityStore;
 import com.zrlog.plugincore.server.runtime.capability.InvokeContext;
+import com.zrlog.plugincore.server.runtime.capability.SocketCapabilityInvoker;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
+import com.zrlog.plugin.common.PluginExecutionTimeouts;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,6 +42,45 @@ public class RuntimeEventRuntime {
             if (invokeResult.isSuccess()) {
                 result.success(handler.getPluginId());
             } else {
+                result.failed(handler.getPluginId());
+            }
+        }
+        return result;
+    }
+
+    /** Synchronous host work shares one deadline, including plugin startup and cancellation. */
+    public RuntimeEventPublishResult publishWithinBudget(RuntimeEventRequest request, String userId, RuntimeDeadline deadline) {
+        if (request == null || request.getEventType() == null || request.getEventType().trim().isEmpty())
+            throw new IllegalArgumentException("Runtime event type is required");
+        ensureRequestId(request);
+        RuntimeEventPublishResult result = new RuntimeEventPublishResult();
+        for (PluginCapability handler : handlerResolver.resolve(request, capabilityStore.listAll())) {
+            long available = deadline.remainingMillis();
+            if (result.isOutcomeUncertain() || Thread.currentThread().isInterrupted()
+                    || available <= SocketCapabilityInvoker.CLEANUP_RESERVE_MILLIS + 1000) {
+                result.failed(handler.getPluginId());
+                continue;
+            }
+            InvokeContext context = invokeContext(request);
+            context.setUserId(userId);
+            context.setDeadline(deadline);
+            context.setRequireCompletion(true);
+            // Keep startup time available even when the capability's default timeout exceeds the host request.
+            long startup = Math.min(30000, available / 4);
+            int executionSeconds = (int) Math.max(1, (available - startup - SocketCapabilityInvoker.CLEANUP_RESERVE_MILLIS) / 1000);
+            context.setTimeoutSeconds((int) Math.min(executionSeconds,
+                    PluginExecutionTimeouts.executionTimeout(handler.getTimeoutSeconds()).getSeconds()));
+            try {
+                CapabilityInvokeResult invoked = capabilityInvoker.invoke(
+                        handler.getPluginId(), handler.getKey(), eventPayload(request), context);
+                if (context.isOutcomeUncertain() || invoked == null || invoked.isOutcomeUncertain())
+                    result.setOutcomeUncertain(true);
+                if (invoked != null && invoked.isSuccess() && invoked.isExecutionCompleted() && !result.isOutcomeUncertain())
+                    result.success(handler.getPluginId());
+                else result.failed(handler.getPluginId());
+            } catch (RuntimeException error) {
+                // A failure after dispatch is not evidence that the plugin had no effects. Do not dispatch later handlers.
+                result.setOutcomeUncertain(true);
                 result.failed(handler.getPluginId());
             }
         }

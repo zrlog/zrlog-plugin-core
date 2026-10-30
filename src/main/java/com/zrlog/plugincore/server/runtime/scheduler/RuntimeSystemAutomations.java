@@ -226,7 +226,7 @@ public final class RuntimeSystemAutomations {
             automation.setTimezone(zoneId.getId());
             changed = true;
         }
-        if (!Boolean.TRUE.equals(automation.getEnabled())) {
+        if (!Boolean.TRUE.equals(automation.getEnabled()) && !automation.isReviewRequired()) {
             automation.setEnabled(Boolean.TRUE);
             changed = true;
         }
