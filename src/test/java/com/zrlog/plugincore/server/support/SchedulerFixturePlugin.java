@@ -87,9 +87,9 @@ public final class SchedulerFixturePlugin implements IPluginAction {
     private static void execute(IOSession session, MsgPacket packet) {
         CapabilityInvokeResult result = new CapabilityInvokeResult();
         boolean replied = false;
+        Path directory = null;
         try {
             CapabilityInvokeRequest request = new Gson().fromJson(packet.getDataStr(), CapabilityInvokeRequest.class);
-            Path directory;
             String mode;
             if ("fixture.cache".equals(request.getCapabilityKey())) {
                 java.util.Properties fixture = new java.util.Properties();
@@ -128,9 +128,17 @@ public final class SchedulerFixturePlugin implements IPluginAction {
             Files.writeString(directory.resolve("completed"), request.getRequestId());
             result.setSuccess(true);
         } catch (Exception error) {
+            boolean interrupted = Thread.interrupted();
+            try {
+                if (directory != null) Files.writeString(directory.resolve("fixture-failure"),
+                        error.getClass().getName() + ": " + error.getMessage());
+            } catch (java.io.IOException ignored) {
+                // Preserve the original fixture result if diagnostic output is unavailable.
+            } finally {
+                if (interrupted || error instanceof InterruptedException) Thread.currentThread().interrupt();
+            }
             result.setSuccess(false);
             result.setErrorMessage(error.getMessage());
-            if (error instanceof InterruptedException) Thread.currentThread().interrupt();
         }
         if (!replied) session.sendJsonMsg(result, packet.getMethodStr(), packet.getMsgId(),
                 result.isSuccess() ? MsgPacketStatus.RESPONSE_SUCCESS : MsgPacketStatus.RESPONSE_ERROR);

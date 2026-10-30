@@ -264,7 +264,11 @@ public class HostSchedulerPluginIntegrationTest {
                 assertEquals("early".equals(mode), receipt.get("completed").getAsBoolean());
                 assertEquals(!"early".equals(mode), receipt.get("outcomeUncertain").getAsBoolean());
                 if ("early".equals(mode)) assertEquals("0000000001.00000001793297580247.94783943-99bf-4773-89bc-5883a479898b", Files.readString(root.resolve("completed")));
-                else assertTrue(Files.exists(root.resolve("cancelled")));
+                else assertTrue("Cancellation was not observed: mode=" + mode + ", receipt=" + completed.body()
+                        + ", processAlive=" + ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)
+                        + ", fixtureFailure=" + (Files.exists(root.resolve("fixture-failure"))
+                        ? Files.readString(root.resolve("fixture-failure")) : "none"),
+                        Files.exists(root.resolve("cancelled")));
                 if ("cooperative".equals(mode)) assertTrue(Files.exists(root.resolve("cleanup-completed")));
                 assertEquals(!"uncooperative".equals(mode), ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false));
                 String progress = Files.readString(root.resolve("progress"));

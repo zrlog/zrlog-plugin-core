@@ -68,6 +68,43 @@ jobs:
             target/plugin-core.jar
             target/core-candidate.json
 
+  lifecycle-platforms:
+    name: Lifecycle regression (${{ matrix.os }}, GraalVM 25)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04-arm, macos-15-intel, macos-14, windows-2022]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: graalvm
+          cache: maven
+          github-token: ${{ github.token }}
+      - name: Exercise startup and cancellation on supported runtime platforms
+        shell: bash
+        run: ./mvnw -B -ntp -Dtest=PluginRuntimeStateServiceTest,HostSchedulerPluginIntegrationTest test
+      - name: Repeat the cooperative cancellation regression
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5; do
+            ./mvnw -B -ntp -Dtest=HostSchedulerPluginIntegrationTest#hostRefreshCancellationWaitsForCleanup test
+            mkdir -p "target/lifecycle-repetitions/run-${attempt}"
+            cp target/surefire-reports/* "target/lifecycle-repetitions/run-${attempt}/"
+          done
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: core-lifecycle-${{ matrix.os }}
+          path: |
+            target/surefire-reports
+            target/lifecycle-repetitions
+
   native:
     if: github.event_name == 'workflow_dispatch' && inputs.native_candidate
     runs-on: ubuntu-22.04

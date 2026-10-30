@@ -1,6 +1,8 @@
 package com.zrlog.plugincore.server.runtime.state;
 
 import com.zrlog.plugincore.server.runtime.InMemoryRuntimeKvStore;
+import com.zrlog.plugincore.server.runtime.util.ManualDeadlineClock;
+import com.zrlog.plugincore.server.runtime.util.RuntimeDeadline;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -10,9 +12,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -21,30 +26,36 @@ public class PluginRuntimeStateServiceTest {
     @Test(timeout = 3000)
     public void sharedDeadlineLeavesCleanupTimeWhenPluginNeverBecomesReady() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
-        java.util.concurrent.atomic.AtomicLong startupBudget = new java.util.concurrent.atomic.AtomicLong();
-        java.util.concurrent.atomic.AtomicLong cleanupBudget = new java.util.concurrent.atomic.AtomicLong();
+        ManualDeadlineClock clock = new ManualDeadlineClock();
+        RuntimeDeadline executionDeadline = clock.afterMillis(400);
+        AtomicLong startupBudget = new AtomicLong();
+        AtomicLong cleanupBudget = new AtomicLong();
+        AtomicReference<RuntimeDeadline> cleanupDeadline = new AtomicReference<>();
         AtomicInteger starts = new AtomicInteger();
         PluginRuntimeStarter starter = new PluginRuntimeStarter() {
             public boolean isStarted(String id) { return starts.get() > 0; }
-            public boolean isReady(String id) { return false; }
+            public boolean isReady(String id) {
+                if (starts.get() > 0) clock.advanceToMillis(300);
+                return false;
+            }
             public Optional<PluginIdentity> findPlugin(String id) { return Optional.of(new PluginIdentity(id, "fixture")); }
             public boolean managesRuntimeState() { return true; }
             public void start(PluginIdentity id) { throw new AssertionError("must propagate deadline"); }
-            public void start(PluginIdentity id, com.zrlog.plugincore.server.runtime.util.RuntimeDeadline deadline) {
+            public void start(PluginIdentity id, RuntimeDeadline deadline) {
                 startupBudget.set(deadline.remainingMillis()); starts.incrementAndGet();
             }
-            public void cleanupStartFailure(PluginIdentity id, com.zrlog.plugincore.server.runtime.util.RuntimeDeadline deadline) {
+            public void cleanupStartFailure(PluginIdentity id, RuntimeDeadline deadline) {
+                cleanupDeadline.set(deadline);
                 cleanupBudget.set(deadline.remainingMillis());
             }
         };
         PluginRuntimeStateService service = new PluginRuntimeStateService(new PluginRuntimeStateStore(kvStore), starter,
                 30000, 1000, "budget-instance", new PluginStartCoordinator());
-        long startedAt = System.nanoTime();
-        assertFalse(service.ensureStarted("fixture", com.zrlog.plugincore.server.runtime.util.RuntimeDeadline.afterMillis(400)));
-        assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt) < 1000);
+        assertFalse(service.ensureStarted("fixture", executionDeadline));
         assertEquals(1, starts.get());
-        assertTrue(startupBudget.get() > 0 && startupBudget.get() <= 350);
-        assertTrue("cleanup must retain part of the same request budget", cleanupBudget.get() > 0);
+        assertEquals(300, startupBudget.get());
+        assertSame("cleanup must share the original request deadline", executionDeadline, cleanupDeadline.get());
+        assertEquals("cleanup must retain part of the same request budget", 100, cleanupBudget.get());
     }
 
     @Test
