@@ -27,6 +27,8 @@ import java.util.UUID;
 import java.util.function.BooleanSupplier;
 
 public class SocketCapabilityInvoker implements CapabilityInvoker {
+    private static final java.util.logging.Logger LOGGER = com.zrlog.plugin.common.LoggerUtil.getLogger(SocketCapabilityInvoker.class);
+
     // Cancellation has one second; the remaining budget covers process locks and graceful/forced exit.
     public static final long CLEANUP_RESERVE_MILLIS = 6000L;
     private static final long CANCEL_GRACE_MILLIS = 1000L;
@@ -77,8 +79,15 @@ public class SocketCapabilityInvoker implements CapabilityInvoker {
                 boolean lifecycle = session.getPlugin() != null && session.getPlugin().getCapabilityLifecycleVersion() >= 1;
                 if (view != null && (session.getPlugin() == null || session.getPlugin().getCapabilityLifecycleVersion() < 2))
                     return error("Update the plugin SDK to support completed view rendering");
-                if (!lifecycle && (context.isRequireCompletion() || requireCompletion.getAsBoolean()))
-                    return error("Update the plugin SDK to support completed execution before running this task");
+                if (!lifecycle && requireCompletion.getAsBoolean())
+                    return error("FaaS requires confirmed plugin completion. Update this plugin to a version that supports it.");
+                if (!lifecycle && context.isRequireCompletion())
+                    return error("This host operation requires confirmed plugin completion. Update this plugin to a version that supports it.");
+                if (!lifecycle) {
+                    context.setLegacyCompletion(true);
+                    LOGGER.warning("Legacy plugin completion protocol: running in resident compatibility mode; "
+                            + "the response does not confirm cleanup completion. Plugin=" + pluginId + ", capability=" + capabilityKey);
+                }
                 long timeout = context.getTimeoutSeconds() == null ? readTimeout.toMillis()
                         : PluginExecutionTimeouts.executionTimeout(context.getTimeoutSeconds(), readTimeout).toMillis();
                 RuntimeDeadline deadline = context.deadline().capMillis(timeout + CLEANUP_RESERVE_MILLIS);

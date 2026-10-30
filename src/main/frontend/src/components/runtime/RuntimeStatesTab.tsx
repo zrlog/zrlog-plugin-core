@@ -364,6 +364,7 @@ const RuntimeStatesTab: React.FC<RuntimeStatesTabProps> = () => {
     const invocationLogCell = (record: InvocationLog) => (
         <Space direction="vertical" size={8} style={{width: "100%", minWidth: 0}}>
             {renderCapability(record.pluginId, record.capabilityKey, undefined, record.pluginPreviewImageBase64, record.pluginName)}
+            {record.legacyCompletion && <Text type="warning" style={{whiteSpace: "normal"}}>{getRes().common.legacyCompletionWarning}</Text>}
             {isMobile && (
                 <Space direction="vertical" size={4} style={{width: "100%"}}>
                     <Space size={[4, 4]} wrap>

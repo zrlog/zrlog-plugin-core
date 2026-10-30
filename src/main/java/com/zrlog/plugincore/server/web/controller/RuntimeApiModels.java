@@ -680,6 +680,10 @@ public final class RuntimeApiModels {
     }
 
     public static class AutomationRunResponse {
+        private boolean legacyCompletion;
+        public boolean isLegacyCompletion() { return legacyCompletion; }
+        public void setLegacyCompletion(boolean legacyCompletion) { this.legacyCompletion = legacyCompletion; }
+
         private String id;
         private String automationId;
         private String pluginId;
@@ -710,6 +714,7 @@ public final class RuntimeApiModels {
             response.finishedAt = run.getFinishedAt();
             response.durationMs = run.getDurationMs();
             response.errorMessage = run.getErrorMessage();
+            response.legacyCompletion = run.isLegacyCompletion();
             response.source = run.getSource();
             response.triggerId = run.getTriggerId();
             return response;
@@ -813,6 +818,10 @@ public final class RuntimeApiModels {
     }
 
     public static class InvocationLogResponse {
+        private boolean legacyCompletion;
+        public boolean isLegacyCompletion() { return legacyCompletion; }
+        public void setLegacyCompletion(boolean legacyCompletion) { this.legacyCompletion = legacyCompletion; }
+
         private String id;
         private String pluginId;
         private String pluginName;

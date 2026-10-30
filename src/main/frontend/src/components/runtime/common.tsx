@@ -107,6 +107,7 @@ export type AutomationRun = {
     finishedAt?: number;
     durationMs?: number;
     errorMessage?: string;
+    legacyCompletion?: boolean;
     targetLabel?: string;
 }
 
@@ -171,6 +172,7 @@ export type InvocationLog = {
     finishedAt?: number;
     durationMs?: number;
     errorMessage?: string;
+    legacyCompletion?: boolean;
 }
 
 export type NotificationProviderRow = {

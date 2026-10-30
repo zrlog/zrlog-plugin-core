@@ -4,6 +4,11 @@ import com.zrlog.plugincore.server.runtime.util.RuntimeTextLimits;
 
 public class CapabilityInvocationLog {
 
+    private boolean legacyCompletion;
+    public boolean isLegacyCompletion() { return legacyCompletion; }
+    public void setLegacyCompletion(boolean legacyCompletion) { this.legacyCompletion = legacyCompletion; }
+
+
     private String id;
     private String pluginId;
     private String capabilityKey;

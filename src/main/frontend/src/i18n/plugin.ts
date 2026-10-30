@@ -2,6 +2,7 @@ export type PluginLang = "zh_CN" | "en_US";
 
 const zhCN = {
     "common": {
+        "legacyCompletionWarning": "兼容模式：此插件不提供全部工作和清理结束的确认。建议更新插件。",
         "system": "系统",
         "confirm": "确定",
         "cancel": "取消",
@@ -238,6 +239,7 @@ export type PluginI18nResource = typeof zhCN;
 
 const enUS: PluginI18nResource = {
     "common": {
+        "legacyCompletionWarning": "Compatibility mode: this plugin does not confirm when all work and cleanup have finished. Update the plugin when available.",
         "system": "System",
         "confirm": "Confirm",
         "cancel": "Cancel",

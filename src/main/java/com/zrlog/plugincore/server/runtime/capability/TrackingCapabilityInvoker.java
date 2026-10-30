@@ -211,6 +211,7 @@ public class TrackingCapabilityInvoker implements CapabilityInvoker {
         log.setDurationMs(finishedAtMs - startedAtMs);
         log.setStatus(context.isOutcomeUncertain() ? "uncertain" : result.isSuccess() ? "success" : "error");
         log.setErrorMessage(result.getErrorMessage());
+        log.setLegacyCompletion(context.isLegacyCompletion());
         invocationLogStore.append(log);
     }
 

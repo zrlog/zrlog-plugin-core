@@ -25,6 +25,25 @@ import static org.junit.Assert.fail;
 public class TrackingCapabilityInvokerTest {
 
     @Test
+    public void compatibilityWarningSurvivesPersistenceWithoutChangingBusinessOutcome() {
+        for (boolean success : new boolean[]{true, false}) {
+            InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
+            TrackingCapabilityInvoker invoker = invoker(kvStore, (plugin, capability, payload, context) -> {
+                context.setLegacyCompletion(true);
+                CapabilityInvokeResult result = new CapabilityInvokeResult();
+                result.setSuccess(success);
+                if (!success) result.setErrorMessage("delivery failed");
+                return result;
+            }, new FakeStarter(true));
+            assertEquals(success, invoker.invoke("plugin-a", "test.run", null, context("scheduler")).isSuccess());
+            CapabilityInvocationLog saved = new InvocationLogStore(kvStore).list().get(0);
+            assertTrue(saved.isLegacyCompletion());
+            assertEquals(success ? "success" : "error", saved.getStatus());
+            assertEquals(success ? null : "delivery failed", saved.getErrorMessage());
+        }
+    }
+
+    @Test
     public void coldPluginStartsInsideBudgetBeforeCapabilityRuns() {
         InMemoryRuntimeKvStore kvStore = new InMemoryRuntimeKvStore();
         java.util.concurrent.atomic.AtomicBoolean ready = new java.util.concurrent.atomic.AtomicBoolean();

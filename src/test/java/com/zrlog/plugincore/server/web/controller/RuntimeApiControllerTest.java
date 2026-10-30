@@ -19,6 +19,20 @@ import static org.junit.Assert.assertTrue;
 public class RuntimeApiControllerTest {
 
     @Test
+    public void invocationApiIncludesCompatibilityWarningAlongsideTheOriginalOutcome() {
+        com.zrlog.plugincore.server.runtime.invocation.CapabilityInvocationLog log =
+                new com.zrlog.plugincore.server.runtime.invocation.CapabilityInvocationLog();
+        log.setPluginId("legacy-plugin"); log.setStatus("error"); log.setErrorMessage("delivery failed");
+        log.setLegacyCompletion(true);
+        RuntimeApiModels.InvocationLogResponse response = RuntimeApiResponses.invocationLogResponses(
+                Collections.singletonList(log), Collections.emptyMap()).get(0);
+        assertTrue(response.isLegacyCompletion());
+        assertEquals("error", response.getStatus());
+        assertEquals("delivery failed", response.getErrorMessage());
+        assertTrue(new com.google.gson.Gson().toJson(response).contains("\"legacyCompletion\":true"));
+    }
+
+    @Test
     public void shouldNotLoadRuntimeStatesInNativeAgentMode() {
         RunType previous = RunConstants.runType;
         try {
