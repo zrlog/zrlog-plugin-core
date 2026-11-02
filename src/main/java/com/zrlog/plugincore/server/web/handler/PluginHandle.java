@@ -26,9 +26,6 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-/**
- * Created by xiaochun on 2016/2/12.
- */
 public class PluginHandle implements HttpErrorHandle {
 
     private static final Logger LOGGER = LoggerUtil.getLogger(PluginHandle.class);
