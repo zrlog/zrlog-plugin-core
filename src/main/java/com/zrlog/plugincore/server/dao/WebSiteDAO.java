@@ -17,9 +17,6 @@ import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.logging.Logger;
 
-/**
- * Created by xiaochun on 2016/2/14.
- */
 public class WebSiteDAO extends DAO {
 
     private static final Logger LOGGER = LoggerUtil.getLogger(WebSiteDAO.class);

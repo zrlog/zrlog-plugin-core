@@ -65,3 +65,6 @@ Linux Native 和 FaaS Native workflow 会在上传前通过固定到 `v1.0.1` �
 该服务。
 
 更多插件开发说明见 [ZrLog 插件开发文档](https://blog.zrlog.com/zrlog-plugin-dev.html)。
+
+源码维护入口：[架构与包边界](docs/plugin-core-architecture.md)、
+[运行时约束与验证](docs/v4.0-runtime-next.md)、[前端开发](src/main/frontend/README.md)。
