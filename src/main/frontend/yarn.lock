@@ -3208,10 +3208,10 @@
   resolved "https://registry.npmmirror.com/@xtuc/long/-/long-4.2.2.tgz#d291c6a4e97989b5c61d9acf396ae4fe133a718d"
   integrity sha512-NuHqBY1PB/D8xU6s/thBgOAiAP7HOYDQ32+BFZILJ8ivkUkAHQnWfn6WhL79Owj1qmUnoN/YPhktdIoucipkAQ==
 
-"@zrlog/ui@0.2.2":
-  version "0.2.2"
-  resolved "https://registry.npmjs.org/@zrlog/ui/-/ui-0.2.2.tgz#944145a0f524c363d891d63afbc05b3670557216"
-  integrity sha512-PMBuiaekhkAyParviXguRnd3UGcSco7DieLyhzsk240o4eDx28W0gnoxbZ+Ri0UN+Z0QYifc6MvAx336eO9NBQ==
+"@zrlog/ui@0.2.3":
+  version "0.2.3"
+  resolved "https://registry.npmjs.org/@zrlog/ui/-/ui-0.2.3.tgz#eb7bc8c74ff0ed860b764a06fcca2497dec999a7"
+  integrity sha512-zTJE3Q+GSXhXdmnfJz6r3elC5EhMGrGeZjsOZvjZ76WyCyLWpdABuwvCSTRvSZ+3w8izA4IETtDLuK4dz1Z7uw==
   dependencies:
     "@ant-design/fast-color" "3.0.1"
     antd-style "4.1.0"
