@@ -644,61 +644,55 @@ public class ServerActionHandler implements IActionHandler {
     public void createArticle(IOSession session, MsgPacket msgPacket) {
         try (PluginLogContext.Scope ignored = PluginLogContext.open(session)) {
             CreateArticleRequest createArticleRequest = new Gson().fromJson(msgPacket.getDataStr(), CreateArticleRequest.class);
-            Integer typeId = 0;
-            if (createArticleRequest.getTypeId() > 0) {
-                typeId = createArticleRequest.getTypeId();
-            } else {
-                try {
-                    typeId = (Integer) new TypeDAO().findByName(createArticleRequest.getType());
-                    if (typeId == null) {
-                        new TypeDAO().set("typeName", createArticleRequest.getType()).set("alias", createArticleRequest.getType()).save();
-                        //query again;
-                        typeId = (Integer) new TypeDAO().findByName(createArticleRequest.getType());
-
-                    }
-                } catch (SQLException e) {
-                    LOGGER.log(Level.SEVERE, PluginLogContext.prefix("Create article type failed"), e);
-                }
-            }
-            String alias = createArticleRequest.getAlias();
-
-            if (alias == null) {
-                try {
-                    alias = new ArticleDAO().queryFirstObj("select max(logId) from log") + "";
-                } catch (SQLException e) {
-                    LOGGER.log(Level.SEVERE, PluginLogContext.prefix("Build article alias failed"), e);
-                }
-            }
             try {
-                Integer logId = (Integer) new ArticleDAO().queryFirstObj("select logId from log where alias = ?", alias);
-                DAO articleDAO = new ArticleDAO().set("releaseTime", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(createArticleRequest.getReleaseDate())).set("last_update_date", new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(createArticleRequest.getReleaseDate())).set("content", createArticleRequest.getContent()).set("title", createArticleRequest.getTitle()).set("markdown", createArticleRequest.getMarkdown()).set("digest", createArticleRequest.getDigest()).set("typeId", typeId).set("private", createArticleRequest.is_private()).set("rubbish", createArticleRequest.isRubbish()).set("alias", alias).set("plain_content", getPlainSearchTxt(createArticleRequest.getContent())).set("thumbnail", createArticleRequest.getThumbnail()).set("canComment", createArticleRequest.isCanComment()).set("recommended", createArticleRequest.isRecommended()).set("keywords", createArticleRequest.getKeywords()).set("editor_type", createArticleRequest.getEditorType()).set("userId", createArticleRequest.getUserId());
-                if (logId == null) {
-                    try {
-                        boolean result = articleDAO.save();
-                        doRefreshCache();
-                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
-                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
-                    } catch (Exception e) {
-                        LOGGER.log(Level.SEVERE, PluginLogContext.prefix("save article error"), e);
-                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
-                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                int typeId = createArticleRequest.getTypeId();
+                if (typeId <= 0) {
+                    String typeName = createArticleRequest.getType();
+                    TypeDAO types = new TypeDAO();
+                    Integer categoryId = types.findByName(typeName);
+                    if (categoryId == null) {
+                        types.set("typeName", typeName).set("alias", typeName).save();
+                        categoryId = types.findByName(typeName);
                     }
-                } else {
-                    try {
-                        Map<String, Object> cond = new HashMap<>();
-                        cond.put("logId", logId);
-                        boolean result = articleDAO.update(cond);
-                        doRefreshCache();
-                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
-                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
-                    } catch (Exception e) {
-                        LOGGER.log(Level.SEVERE, PluginLogContext.prefix("update article error"), e);
-                        session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
-                                msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
+                    if (categoryId == null) {
+                        throw new SQLException("Article category was not found after saving");
                     }
+                    typeId = categoryId;
                 }
-            } catch (SQLException e) {
+
+                ArticleDAO articles = new ArticleDAO();
+                String alias = createArticleRequest.getAlias();
+                if (alias == null) {
+                    Number latestId = (Number) articles.queryFirstObj("select max(logId) from log");
+                    alias = latestId == null ? "null" : Long.toString(latestId.longValue());
+                }
+                Number logId = (Number) articles.queryFirstObj("select logId from log where alias = ?", alias);
+                String releaseTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(createArticleRequest.getReleaseDate());
+                DAO article = articles.set("releaseTime", releaseTime)
+                        .set("last_update_date", releaseTime)
+                        .set("content", createArticleRequest.getContent())
+                        .set("title", createArticleRequest.getTitle())
+                        .set("markdown", createArticleRequest.getMarkdown())
+                        .set("digest", createArticleRequest.getDigest())
+                        .set("typeId", typeId)
+                        .set("privacy", createArticleRequest.is_private())
+                        .set("rubbish", createArticleRequest.isRubbish())
+                        .set("alias", alias)
+                        .set("plain_content", getPlainSearchTxt(createArticleRequest.getContent()))
+                        .set("thumbnail", createArticleRequest.getThumbnail())
+                        .set("canComment", createArticleRequest.isCanComment())
+                        .set("recommended", createArticleRequest.isRecommended())
+                        .set("keywords", createArticleRequest.getKeywords())
+                        .set("editor_type", createArticleRequest.getEditorType())
+                        .set("userId", createArticleRequest.getUserId());
+                boolean result = logId == null ? article.save() : article.update(Map.of("logId", logId.intValue()));
+                doRefreshCache();
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(result),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_SUCCESS);
+            } catch (SQLException | RuntimeException e) {
                 LOGGER.log(Level.SEVERE, PluginLogContext.prefix("Create article failed"), e);
+                session.sendJsonMsg(PluginTransportModels.OperationResult.success(false),
+                        msgPacket.getMethodStr(), msgPacket.getMsgId(), MsgPacketStatus.RESPONSE_ERROR);
             }
         }
     }
