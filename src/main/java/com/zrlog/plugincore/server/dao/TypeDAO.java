@@ -10,7 +10,8 @@ public class TypeDAO extends DAO {
         this.tableName = "type";
     }
 
-    public Number findByName(String type) throws SQLException {
-        return (Number) queryFirstObj("select typeId from type where typeName = ? ", type);
+    public Integer findByName(String type) throws SQLException {
+        Number typeId = (Number) queryFirstObj("select typeId from type where typeName = ?", type);
+        return typeId == null ? null : typeId.intValue();
     }
 }

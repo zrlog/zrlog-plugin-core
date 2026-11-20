@@ -649,7 +649,7 @@ public class ServerActionHandler implements IActionHandler {
                 if (typeId <= 0) {
                     String typeName = createArticleRequest.getType();
                     TypeDAO types = new TypeDAO();
-                    Number categoryId = types.findByName(typeName);
+                    Integer categoryId = types.findByName(typeName);
                     if (categoryId == null) {
                         types.set("typeName", typeName).set("alias", typeName).save();
                         categoryId = types.findByName(typeName);
@@ -657,7 +657,7 @@ public class ServerActionHandler implements IActionHandler {
                     if (categoryId == null) {
                         throw new SQLException("Article category was not found after saving");
                     }
-                    typeId = categoryId.intValue();
+                    typeId = categoryId;
                 }
 
                 ArticleDAO articles = new ArticleDAO();
