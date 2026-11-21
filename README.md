@@ -66,8 +66,8 @@ JAR 和 Native 打包脚本由 [`zrlog-build`](https://github.com/zrlog/zrlog-bu
 Linux Native 和 FaaS Native workflow 会在上传前通过固定到 `v1.0.1` 完整提交 SHA 的
 [`zrlog-build`](https://github.com/zrlog/zrlog-build) Action 调用
 `zrlog-artifact-service` 处理并校验可执行文件。客户端用法与故障处理见该仓库 README。
-仓库需要配置 `ARTIFACT_SERVICE_TOKEN` GitHub Actions Secret；Windows 和 macOS 构建不调用
-该服务。
+Linux 构建通过 GitHub Actions 变量 `ARTIFACT_SERVICE_URL` 读取服务地址，并使用
+`ARTIFACT_SERVICE_TOKEN` Secret 认证。
 
 更多插件开发说明见 [ZrLog 插件开发文档](https://blog.zrlog.com/zrlog-plugin-dev.html)。
 

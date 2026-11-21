@@ -54,7 +54,7 @@ jobs:
           artifact-name: ${{ steps.package.outputs.artifact_name }}
           artifact-version: ${{ steps.package.outputs.artifact_version }}
           artifact-architecture: ${{ steps.package.outputs.artifact_architecture }}
-          service-url: https://webdav.zrlog.com/artifact
+          service-url: ${{ vars.ARTIFACT_SERVICE_URL }}
           service-token: ${{ secrets.ARTIFACT_SERVICE_TOKEN }}
       - name: Upload binary
         env:
