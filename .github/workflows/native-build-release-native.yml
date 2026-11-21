@@ -45,7 +45,7 @@ jobs:
       - name: Build binary
         id: package
         run: |
-          bash -e bin/package-native-github.sh /tmp/download/plugin/core
+          bash .zrlog-build/scripts/plugin/core/package-native.sh /tmp/download/plugin/core
       - name: Process Linux binary
         if: runner.os == 'Linux'
         uses: zrlog/zrlog-build@5b539f9a93403c981b9e36554ffb8d3d3e7e8b33 # v1.0.1
