@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: zrlog/zrlog-build
-          ref: e8532208950a2c8902c1dec1b4e259f08af922e5
+          ref: cffa4213ad4a03a315a73d280317c691d469f8e7
           path: .zrlog-build
           persist-credentials: false
       - uses: graalvm/setup-graalvm@v1
