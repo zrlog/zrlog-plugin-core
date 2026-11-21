@@ -1,2 +1,2 @@
- bash -e bin/build-info.sh
- ./mvnw -PnodeBuild clean package assembly:single ${1} -U
+#!/usr/bin/env bash
+exec bash "$(dirname "${BASH_SOURCE[0]}")/run-zrlog-build.sh" core/package-jar.sh "$@"

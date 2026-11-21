@@ -58,6 +58,11 @@ export JAVA_HOME=${HOME}/dev/graalvm-jdk-latest
 export PATH=${JAVA_HOME}/bin:$PATH
 ```
 
+JAR 和 Native 打包脚本由 [`zrlog-build`](https://github.com/zrlog/zrlog-build) 维护，工作流会检出固定提交。
+本地运行 `bash bin/compile-jar.sh -DoutputDirectory=目标目录` 或 `bash bin/package-native-github.sh 目标目录`
+时，可将 `zrlog-build` 检出到本仓库的 `.zrlog-build`、放在与本仓库同级的目录，
+或通过 `ZRLOG_BUILD_DIR` 指定已检出的路径。
+
 Linux Native 和 FaaS Native workflow 会在上传前通过固定到 `v1.0.1` 完整提交 SHA 的
 [`zrlog-build`](https://github.com/zrlog/zrlog-build) Action 调用
 `zrlog-artifact-service` 处理并校验可执行文件。客户端用法与故障处理见该仓库 README。

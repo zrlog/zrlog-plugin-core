@@ -18,6 +18,13 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      - name: Check out shared build scripts
+        uses: actions/checkout@v4
+        with:
+          repository: zrlog/zrlog-build
+          ref: e8532208950a2c8902c1dec1b4e259f08af922e5
+          path: .zrlog-build
+          persist-credentials: false
       - name: Cache node modules admin
         uses: actions/cache@v3
         with:
@@ -31,7 +38,11 @@ jobs:
           java-version: '11'
           cache: 'maven'
       - name: Build with Maven
-        run: |
-          mkdir -p /tmp/download
-          bash -e bin/compile-jar.sh -DoutputDirectory=/tmp/download/plugin/core
-          bash bin/upload-bin.sh ${{ secrets.SECRET_ID }} ${{ secrets.SECRET_KEY }} ${{ secrets.BUCKET }} /tmp/download plugin ${{ secrets.HOST }}
+        run: bash bin/compile-jar.sh -DoutputDirectory=/tmp/download/plugin/core
+      - name: Upload JAR
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_KEY }}
+          ARTIFACT_BUCKET: ${{ secrets.BUCKET }}
+          ARTIFACT_ENDPOINT: ${{ secrets.HOST }}
+        run: bash .zrlog-build/scripts/plugin/upload-bin.sh /tmp/download plugin

@@ -1,4 +1,5 @@
 .idea
+/.zrlog-build/
 **/logs
 *.pid
 *.jar

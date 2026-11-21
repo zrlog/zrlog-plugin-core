@@ -19,6 +19,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check out shared build scripts
+        uses: actions/checkout@v4
+        with:
+          repository: zrlog/zrlog-build
+          ref: e8532208950a2c8902c1dec1b4e259f08af922e5
+          path: .zrlog-build
+          persist-credentials: false
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: '25'
@@ -50,5 +57,9 @@ jobs:
           service-url: https://webdav.zrlog.com/artifact
           service-token: ${{ secrets.ARTIFACT_SERVICE_TOKEN }}
       - name: Upload binary
-        run: |
-          bash -e bin/upload-bin.sh ${{ secrets.SECRET_ID }} ${{ secrets.SECRET_KEY }} ${{ secrets.BUCKET }} /tmp/download plugin ${{ secrets.HOST }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SECRET_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_KEY }}
+          ARTIFACT_BUCKET: ${{ secrets.BUCKET }}
+          ARTIFACT_ENDPOINT: ${{ secrets.HOST }}
+        run: bash .zrlog-build/scripts/plugin/upload-bin.sh /tmp/download plugin

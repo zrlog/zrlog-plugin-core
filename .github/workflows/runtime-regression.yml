@@ -27,6 +27,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Check out shared build scripts
+        uses: actions/checkout@v4
+        with:
+          repository: zrlog/zrlog-build
+          ref: e8532208950a2c8902c1dec1b4e259f08af922e5
+          path: .zrlog-build
+          persist-credentials: false
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -124,6 +131,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Check out shared build scripts
+        uses: actions/checkout@v4
+        with:
+          repository: zrlog/zrlog-build
+          ref: e8532208950a2c8902c1dec1b4e259f08af922e5
+          path: .zrlog-build
+          persist-credentials: false
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: '25'
