@@ -77,6 +77,10 @@ public class HostSchedulerPluginIntegrationTest {
         var socketServer = new PluginCoreSocketServer(config, services.pluginBootstrap());
         Thread socketThread = new Thread(socketServer::listen, "integration-plugin-view");
         try (var database = InMemoryPluginCoreDatabase.open()) {
+            database.update("insert into website(name, value) values (?, ?)", "admin_theme", "desk");
+            database.update("insert into website(name, value) values (?, ?)", "admin_darkMode", "true");
+            database.update("insert into website(name, value) values (?, ?)", "admin_color_primary", "#00875a");
+            database.update("insert into website(name, value) values (?, ?)", "admin_compactMode", "true");
             try {
                 assertTrue(httpServer.start(httpPort, false, services)); assertTrue(socketServer.create()); socketThread.start();
                 services.pluginBootstrap().loadPlugin(pluginJar(root).toFile(), SchedulerFixturePlugin.ID, RuntimeDeadline.afterMillis(10000));
@@ -91,7 +95,7 @@ public class HostSchedulerPluginIntegrationTest {
                         .header("X-ZrLog-View-Path", "/index").header("X-ZrLog-Budget-Millis", "10000")
                         .header("IsLogin", "true").header("LoginUserId", "42").header("Authorization", "Bearer browser-secret")
                         .header("Cookie", "private-session").header("Current-Locale", "zh_CN")
-                        .header("X-ZrLog-View-User-Agent", "Static fixture")
+                        .header("X-ZrLog-View-User-Agent", "Static fixture").header("Admin-Compact-Mode", "false")
                         .POST(HttpRequest.BodyPublishers.noBody()).build();
                 var response = HttpClient.newHttpClient().sendAsync(request, HttpResponse.BodyHandlers.ofString());
                 await(() -> Files.exists(root.resolve("early-response")) || response.isDone());
@@ -100,6 +104,10 @@ public class HostSchedulerPluginIntegrationTest {
                 assertEquals(-1, view.get("userId").getAsInt()); assertEquals("GET", view.get("httpMethod").getAsString());
                 assertEquals("false", view.getAsJsonObject("header").get("IsLogin").getAsString());
                 assertEquals("Static fixture", view.getAsJsonObject("header").get("User-Agent").getAsString());
+                assertEquals("desk", view.get("adminTheme").getAsString());
+                assertTrue(view.get("darkMode").getAsBoolean());
+                assertEquals("#00875a", view.get("adminColorPrimary").getAsString());
+                assertFalse(view.get("adminCompactMode").getAsBoolean());
                 assertEquals(2, view.getAsJsonObject("param").getAsJsonArray("tag").size());
                 assertEquals("你好", view.getAsJsonObject("param").getAsJsonArray("text").get(0).getAsString());
                 for (String secret : List.of("integration-host-secret", "browser-secret", "private-session", "LoginUserId"))

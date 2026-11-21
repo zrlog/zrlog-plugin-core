@@ -54,13 +54,7 @@ public class PluginController extends Controller {
         document.title(PluginI18n.text("plugin.manage.title"));
         document.selectFirst("html").attr("lang", PluginI18n.getLanguage().replace('_', '-'));
         document.select("noscript").forEach(element -> element.text(PluginI18n.text("plugin.manage.javascriptRequired")));
-        document.body().removeAttr("class");
         PluginApiModels.PluginListResponse pluginData = new PluginApiController(request, response).plugins();
-        if (Boolean.TRUE.equals(pluginData.getDark())) {
-            document.body().addClass("dark");
-        } else {
-            document.body().addClass("light");
-        }
         String jsonStr = new Gson().toJson(pluginData);
         Element pluginInfo = document.getElementById("pluginInfo");
         if (Objects.nonNull(pluginInfo)) {

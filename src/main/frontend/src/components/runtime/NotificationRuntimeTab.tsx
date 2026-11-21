@@ -1,7 +1,9 @@
 import {getRes} from "../../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Grid, Space, Table, Tag, Tooltip, Typography, message} from "antd";
-import {CheckOutlined, ReloadOutlined, SendOutlined} from "@ant-design/icons";
+import CheckIcon from "@zrlog/ui/icons/check";
+import RefreshIcon from "@zrlog/ui/icons/refresh";
+import SendIcon from "@zrlog/ui/icons/send";
 import type {ColumnsType} from "antd/es/table";
 import axios from "axios";
 import {apiPath, Capability, formatEpoch, formatTime, NotificationDelivery, NotificationProviderRow, paginationFromResponse, rowsFromResponse, RuntimePagination, useCapabilityView} from "./common";
@@ -161,17 +163,17 @@ const NotificationRuntimeTab: React.FC = () => {
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
                     <Tooltip title={getRes().runtimeNotification.sendTest}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<SendOutlined />} aria-label={getRes().runtimeNotification.sendTest} onClick={() => testProvider(record)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<SendIcon />} aria-label={getRes().runtimeNotification.sendTest} onClick={() => testProvider(record)}>
                             {!isMobile && getRes().runtimeNotification.test}
                         </Button>
                     </Tooltip>
                     <Tooltip title={getRes().common.setDefault}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckIcon />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
                             {!isMobile && getRes().common.setDefault}
                         </Button>
                     </Tooltip>
                     <Tooltip title={getRes().common.autoSelect}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.channel)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<RefreshIcon />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.channel)}>
                             {!isMobile && getRes().common.autoSelect}
                         </Button>
                     </Tooltip>

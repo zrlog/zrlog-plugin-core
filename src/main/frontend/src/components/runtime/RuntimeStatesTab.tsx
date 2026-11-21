@@ -1,7 +1,8 @@
 import {getRes} from "../../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Descriptions, Drawer, Grid, Popconfirm, Space, Table, Tag, Tooltip, Typography, message} from "antd";
-import {InfoCircleOutlined, PoweroffOutlined} from "@ant-design/icons";
+import InfoIcon from "@zrlog/ui/icons/info";
+import StopIcon from "@zrlog/ui/icons/stop";
 import type {ColumnsType} from "antd/es/table";
 import axios from "axios";
 import {apiPath, Capability, formatEpoch, formatTime, InvocationLog, paginationFromResponse, rowsFromResponse, RuntimeInstanceState, RuntimePagination, useCapabilityView} from "./common";
@@ -247,7 +248,7 @@ const RuntimeStatesTab: React.FC<RuntimeStatesTabProps> = () => {
                         <Button
                             type={isMobile ? "text" : "link"}
                             size="small"
-                            icon={<InfoCircleOutlined />}
+                            icon={<InfoIcon />}
                             aria-label={getRes().runtimeStates.details}
                             onClick={() => setSelectedState(record)}
                         >
@@ -259,7 +260,7 @@ const RuntimeStatesTab: React.FC<RuntimeStatesTabProps> = () => {
                             danger
                             type={isMobile ? "text" : "link"}
                             size="small"
-                            icon={<PoweroffOutlined />}
+                            icon={<StopIcon />}
                             aria-label={getRes().runtimeStates.stop}
                             disabled={stopDisabled(record)}
                             loading={stateActions[stateActionKey(record, "stop")]}

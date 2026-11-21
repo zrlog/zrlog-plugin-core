@@ -2,7 +2,7 @@ import {getRes, formatText, getLanguage} from "../../i18n/plugin";
 import {useMemo} from "react";
 import type {ReactNode} from "react";
 import {Avatar, Space, Typography, theme} from "antd";
-import {ApiOutlined} from "@ant-design/icons";
+import ApiIcon from "@zrlog/ui/icons/api";
 export {apiBase, apiPath} from "../../api";
 
 const {Text} = Typography;
@@ -333,7 +333,7 @@ export const renderPluginIdentity = ({
                 shape="square"
                 size={avatarSize}
                 src={image || undefined}
-                icon={!image ? <ApiOutlined style={iconColor ? {color: iconColor} : undefined} /> : undefined}
+                icon={!image ? <ApiIcon style={iconColor ? {color: iconColor} : undefined} /> : undefined}
                 style={{
                     flexShrink: 0,
                     ...(iconBackgroundColor ? {backgroundColor: "transparent"} : {})

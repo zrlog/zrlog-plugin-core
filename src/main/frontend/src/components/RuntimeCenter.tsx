@@ -1,7 +1,7 @@
 import {getRes} from "../i18n/plugin";
 import React from "react";
 import {Button, Grid, Space, Tabs, Tooltip, Typography} from "antd";
-import {ArrowLeftOutlined} from "@ant-design/icons";
+import ArrowLeftIcon from "@zrlog/ui/icons/arrow-left";
 import {Content} from "antd/es/layout/layout";
 import {useLocation, useNavigate} from "react-router-dom";
 import {PluginCoreInfoResponse} from "../index";
@@ -32,7 +32,7 @@ const RuntimeCenter: React.FC<RuntimeCenterProps> = ({data}) => {
                         <Tooltip title={getRes().runtime.back}>
                             <Button
                                 type="text"
-                                icon={<ArrowLeftOutlined />}
+                                icon={<ArrowLeftIcon />}
                                 aria-label={getRes().runtime.back}
                                 onClick={() => navigate(backPath())}
                                 style={{marginTop: -1}}

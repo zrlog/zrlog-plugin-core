@@ -5,7 +5,7 @@ import zh_CN from "antd/es/locale/zh_CN";
 import en_US from "antd/es/locale/en_US";
 import {getRes, normalizeLang, setLanguage} from "./i18n/plugin";
 import {useCallback, useEffect, useState} from "react";
-import {DEFAULT_PRIMARY_COLOR} from "@zrlog/ui/themes";
+import {DEFAULT_PRIMARY_COLOR, getUiThemeDefinition} from "@zrlog/ui/themes";
 import {BrowserRouter} from "react-router-dom";
 import AppBase from "./AppBase";
 import axios from "axios";
@@ -82,11 +82,11 @@ const covertData = (data: PluginCoreInfoResponse) => {
 
 const loadFromDocument = () => {
     try {
-        const a = document.getElementById("pluginInfo");
-        if (a === null || a.innerText.length === 0) {
+        const data = document.getElementById("pluginInfo")?.textContent;
+        if (!data) {
             return null;
         }
-        return covertData(JSON.parse(a.innerText));
+        return covertData(JSON.parse(data));
     } catch (e) {
         return null;
     }
@@ -95,10 +95,10 @@ const loadFromDocument = () => {
 const Index = () => {
     const [pluginInfo, setPluginInfo] = useState<PluginCoreInfoResponse | null>(loadFromDocument);
     const appearance = {
-        theme: pluginInfo?.theme || "default",
-        dark: pluginInfo?.dark ?? false,
-        colorPrimary: pluginInfo?.primaryColor || DEFAULT_PRIMARY_COLOR,
-        compactMode: pluginInfo?.compactMode ?? false,
+        theme: getUiThemeDefinition(pluginInfo?.theme?.trim()).id,
+        dark: pluginInfo?.dark === true,
+        colorPrimary: pluginInfo?.primaryColor?.trim() || DEFAULT_PRIMARY_COLOR,
+        compactMode: pluginInfo?.compactMode === true,
     };
 
     const reloadPluginInfo = useCallback(async () => {

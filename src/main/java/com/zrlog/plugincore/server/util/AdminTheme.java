@@ -1,5 +1,6 @@
 package com.zrlog.plugincore.server.util;
 
+import com.hibegin.common.dao.DAO;
 import com.hibegin.http.server.api.HttpRequest;
 import com.zrlog.plugin.common.LoggerUtil;
 import com.zrlog.plugin.common.model.PublicInfo;
@@ -8,7 +9,6 @@ import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -16,8 +16,10 @@ public class AdminTheme {
 
     public static final String DARK_MODE_HEADER = BaseHttpRequestInfo.DARK_MODE_HEADER;
     public static final String ADMIN_COLOR_PRIMARY_HEADER = BaseHttpRequestInfo.ADMIN_COLOR_PRIMARY_HEADER;
-    public static final String ADMIN_THEME_HEADER = "Admin-Theme";
-    public static final String ADMIN_COMPACT_MODE_HEADER = "Admin-Compact-Mode";
+    public static final String ADMIN_THEME_HEADER = BaseHttpRequestInfo.ADMIN_THEME_HEADER;
+    public static final String ADMIN_COMPACT_MODE_HEADER = BaseHttpRequestInfo.ADMIN_COMPACT_MODE_HEADER;
+    private static final String LEGACY_DARK_MODE_HEADER = "dark_mode";
+    private static final String LEGACY_ADMIN_COLOR_PRIMARY_HEADER = "admin_color_primary";
 
     private static final Logger LOGGER = LoggerUtil.getLogger(AdminTheme.class);
 
@@ -27,13 +29,13 @@ public class AdminTheme {
     private final boolean compactMode;
 
     public AdminTheme(boolean darkMode, String adminColorPrimary) {
-        this(darkMode, adminColorPrimary, "default", false);
+        this(darkMode, adminColorPrimary, null, false);
     }
 
     public AdminTheme(boolean darkMode, String adminColorPrimary, String theme, boolean compactMode) {
         this.darkMode = darkMode;
-        this.adminColorPrimary = normalizeAdminColorPrimary(adminColorPrimary);
-        this.theme = isBlank(theme) ? "default" : theme.trim();
+        this.adminColorPrimary = defaultIfBlank(adminColorPrimary, BaseHttpRequestInfo.DEFAULT_ADMIN_COLOR_PRIMARY);
+        this.theme = defaultIfBlank(theme, BaseHttpRequestInfo.DEFAULT_ADMIN_THEME);
         this.compactMode = compactMode;
     }
 
@@ -54,16 +56,11 @@ public class AdminTheme {
     }
 
     public static AdminTheme fromRequest(HttpRequest request) {
-        Map<String, String> headers = request == null ? null : request.getHeaderMap();
-        AdminTheme fallback = missingThemeHeader(headers) ? loadThemeSilently() : null;
-        return fromHeadersWithFallback(headers, fallback);
+        return fromHeaders(request == null ? null : request.getHeaderMap());
     }
 
-    public static Map<String, String> copyHeadersWithFallback(HttpRequest request) {
-        Map<String, String> headers = ClientIpHeaders.copyHeadersWithRealIp(request);
-        AdminTheme theme = fromRequest(request);
-        theme.putMissingHeaders(headers);
-        return headers;
+    public static AdminTheme fromHeaders(Map<String, String> headers) {
+        return fromHeadersWithFallback(headers, missingThemeHeader(headers) ? loadThemeSilently() : null);
     }
 
     public static void applyTo(BaseHttpRequestInfo requestInfo, HttpRequest request) {
@@ -71,97 +68,81 @@ public class AdminTheme {
             return;
         }
         AdminTheme theme = fromRequest(request);
-        requestInfo.setHeader(copyHeadersWithFallback(request, theme));
-        theme.applyTo(requestInfo);
+        theme.applyTo(requestInfo, ClientIpHeaders.copyHeadersWithRealIp(request));
     }
 
     public static AdminTheme fromHeaders(Map<String, String> headers, PublicInfo fallback) {
         return fromHeadersWithFallback(headers,
-                new AdminTheme(publicInfoDarkMode(fallback), publicInfoAdminColorPrimary(fallback)));
+                new AdminTheme(fallback != null && Boolean.TRUE.equals(fallback.getDarkMode()),
+                        fallback == null ? null : fallback.getAdminColorPrimary()));
     }
 
     static AdminTheme fromHeadersWithFallback(Map<String, String> headers, AdminTheme fallback) {
         AdminTheme defaults = fallback == null ? new AdminTheme(false, null) : fallback;
-        String darkModeHeader = headerValue(headers, DARK_MODE_HEADER, "Dark_mode", "dark_mode");
-        String adminColorPrimaryHeader = headerValue(headers, ADMIN_COLOR_PRIMARY_HEADER, "admin_color_Primary", "admin_color_primary");
-        boolean darkMode = isBlank(darkModeHeader) ? defaults.isDarkMode() : BooleanUtils.isTrue(darkModeHeader);
-        String adminColorPrimary = isBlank(adminColorPrimaryHeader) ? defaults.getAdminColorPrimary() : adminColorPrimaryHeader;
+        String darkMode = headerValue(headers, DARK_MODE_HEADER, LEGACY_DARK_MODE_HEADER);
+        String adminColorPrimary = headerValue(headers, ADMIN_COLOR_PRIMARY_HEADER, LEGACY_ADMIN_COLOR_PRIMARY_HEADER);
         String theme = headerValue(headers, ADMIN_THEME_HEADER);
         String compactMode = headerValue(headers, ADMIN_COMPACT_MODE_HEADER);
-        return new AdminTheme(darkMode, adminColorPrimary, isBlank(theme) ? defaults.getTheme() : theme,
-                isBlank(compactMode) ? defaults.isCompactMode() : BooleanUtils.isTrue(compactMode));
-    }
-
-    public void putMissingHeaders(Map<String, String> headers) {
-        if (headers == null) {
-            return;
-        }
-        if (isBlank(headers.get(DARK_MODE_HEADER))) {
-            headers.put(DARK_MODE_HEADER, darkMode + "");
-        }
-        if (isBlank(headers.get(ADMIN_COLOR_PRIMARY_HEADER))) {
-            headers.put(ADMIN_COLOR_PRIMARY_HEADER, adminColorPrimary);
-        }
-        if (isBlank(headers.get(ADMIN_THEME_HEADER))) {
-            headers.put(ADMIN_THEME_HEADER, theme);
-        }
-        if (isBlank(headers.get(ADMIN_COMPACT_MODE_HEADER))) {
-            headers.put(ADMIN_COMPACT_MODE_HEADER, Boolean.toString(compactMode));
-        }
+        return new AdminTheme(booleanOrFallback(darkMode, defaults.isDarkMode()),
+                defaultIfBlank(adminColorPrimary, defaults.getAdminColorPrimary()),
+                defaultIfBlank(theme, defaults.getTheme()),
+                booleanOrFallback(compactMode, defaults.isCompactMode()));
     }
 
     public void applyTo(BaseHttpRequestInfo requestInfo) {
         if (requestInfo == null) {
             return;
         }
-        requestInfo.setDarkMode(darkMode);
-        requestInfo.setAdminColorPrimary(adminColorPrimary);
         Map<String, String> headers = requestInfo.getHeader();
-        if (headers == null) {
-            headers = new HashMap<>();
-            requestInfo.setHeader(headers);
-        }
-        putMissingHeaders(headers);
+        applyTo(requestInfo, headers == null ? new HashMap<>() : new HashMap<>(headers));
     }
 
-    private static Map<String, String> copyHeadersWithFallback(HttpRequest request, AdminTheme theme) {
-        Map<String, String> headers = ClientIpHeaders.copyHeadersWithRealIp(request);
-        theme.putMissingHeaders(headers);
-        return headers;
+    private void applyTo(BaseHttpRequestInfo requestInfo, Map<String, String> headers) {
+        requestInfo.setDarkMode(darkMode);
+        requestInfo.setAdminColorPrimary(adminColorPrimary);
+        requestInfo.setAdminTheme(theme);
+        requestInfo.setAdminCompactMode(compactMode);
+        headers.put(DARK_MODE_HEADER, Boolean.toString(darkMode));
+        headers.put(ADMIN_COLOR_PRIMARY_HEADER, adminColorPrimary);
+        headers.put(ADMIN_THEME_HEADER, theme);
+        headers.put(ADMIN_COMPACT_MODE_HEADER, Boolean.toString(compactMode));
+        requestInfo.setHeader(headers);
     }
 
     private static boolean missingThemeHeader(Map<String, String> headers) {
-        return isBlank(headerValue(headers, DARK_MODE_HEADER, "Dark_mode", "dark_mode"))
-                || isBlank(headerValue(headers, ADMIN_COLOR_PRIMARY_HEADER, "admin_color_Primary", "admin_color_primary"))
-                || isBlank(headerValue(headers, ADMIN_THEME_HEADER))
-                || isBlank(headerValue(headers, ADMIN_COMPACT_MODE_HEADER));
+        return !isBoolean(headerValue(headers, DARK_MODE_HEADER, LEGACY_DARK_MODE_HEADER))
+                || headerValue(headers, ADMIN_COLOR_PRIMARY_HEADER, LEGACY_ADMIN_COLOR_PRIMARY_HEADER) == null
+                || headerValue(headers, ADMIN_THEME_HEADER) == null
+                || !isBoolean(headerValue(headers, ADMIN_COMPACT_MODE_HEADER));
     }
 
     private static String headerValue(Map<String, String> headers, String key, String... aliases) {
         if (headers == null || headers.isEmpty()) {
             return null;
         }
-        String value = headers.get(key);
-        if (!isBlank(value)) {
+        String value = findHeader(headers, key);
+        if (value != null) {
             return value;
         }
         for (String alias : aliases) {
-            value = headers.get(alias);
-            if (!isBlank(value)) {
+            value = findHeader(headers, alias);
+            if (value != null) {
                 return value;
             }
         }
+        return null;
+    }
+
+    private static String findHeader(Map<String, String> headers, String key) {
+        String value = defaultIfBlank(headers.get(key), null);
+        if (value != null) {
+            return value;
+        }
         for (Map.Entry<String, String> entry : headers.entrySet()) {
-            String entryKey = entry.getKey();
-            if (entryKey == null) {
-                continue;
-            }
-            if (Objects.equals(entryKey, key) || entryKey.equalsIgnoreCase(key)) {
-                return entry.getValue();
-            }
-            for (String alias : aliases) {
-                if (Objects.equals(entryKey, alias) || entryKey.equalsIgnoreCase(alias)) {
-                    return entry.getValue();
+            if (key.equalsIgnoreCase(entry.getKey())) {
+                value = defaultIfBlank(entry.getValue(), null);
+                if (value != null) {
+                    return value;
                 }
             }
         }
@@ -169,6 +150,9 @@ public class AdminTheme {
     }
 
     private static AdminTheme loadThemeSilently() {
+        if (DAO.getDefaultDataSource() == null) {
+            return null;
+        }
         try {
             return PublicInfoLoader.loadAdminTheme();
         } catch (SQLException e) {
@@ -177,25 +161,19 @@ public class AdminTheme {
         }
     }
 
-    private static boolean publicInfoDarkMode(PublicInfo publicInfo) {
-        return publicInfo != null && Boolean.TRUE.equals(publicInfo.getDarkMode());
+    private static boolean isBoolean(String value) {
+        return "true".equalsIgnoreCase(value) || "false".equalsIgnoreCase(value);
     }
 
-    private static String publicInfoAdminColorPrimary(PublicInfo publicInfo) {
-        if (publicInfo == null) {
-            return PublicInfoLoader.DEFAULT_ADMIN_COLOR_PRIMARY;
+    private static boolean booleanOrFallback(String value, boolean fallback) {
+        return isBoolean(value) ? Boolean.parseBoolean(value) : fallback;
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        if (value == null) {
+            return fallback;
         }
-        return normalizeAdminColorPrimary(publicInfo.getAdminColorPrimary());
-    }
-
-    private static String normalizeAdminColorPrimary(String adminColorPrimary) {
-        if (isBlank(adminColorPrimary)) {
-            return PublicInfoLoader.DEFAULT_ADMIN_COLOR_PRIMARY;
-        }
-        return adminColorPrimary;
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.trim().isEmpty();
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? fallback : trimmed;
     }
 }

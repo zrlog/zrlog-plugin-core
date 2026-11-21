@@ -1,7 +1,14 @@
 import {getRes, formatText} from "../../i18n/plugin";
 import React, {useEffect, useMemo, useState} from "react";
 import {Button, Checkbox, Drawer, Form, Grid, Input, InputNumber, Modal, Popconfirm, Segmented, Select, Space, Switch, Table, Tabs, Tag, Tooltip, Typography, message} from "antd";
-import {CodeOutlined, CopyOutlined, DeleteOutlined, EditOutlined, KeyOutlined, PlayCircleOutlined, PlusOutlined, SaveOutlined} from "@ant-design/icons";
+import AddIcon from "@zrlog/ui/icons/add";
+import BoltIcon from "@zrlog/ui/icons/bolt";
+import CodeIcon from "@zrlog/ui/icons/code";
+import CopyIcon from "@zrlog/ui/icons/copy";
+import DeleteIcon from "@zrlog/ui/icons/delete";
+import EditIcon from "@zrlog/ui/icons/edit";
+import KeyIcon from "@zrlog/ui/icons/key";
+import SaveIcon from "@zrlog/ui/icons/save";
 import type {ColumnsType} from "antd/es/table";
 import axios from "axios";
 import {
@@ -523,7 +530,7 @@ crons = ["*/5 * * * *"]`;
                             type={isMobile ? "text" : "link"}
                             size="small"
                             aria-label={getRes().runtimeScheduler.runNow}
-                            icon={<PlayCircleOutlined />}
+                            icon={<BoltIcon />}
                             disabled={!record.id || record.reviewRequired}
                             loading={runningAutomations[automationKey(record)]}
                             onClick={() => runAutomationNow(record)}
@@ -536,7 +543,7 @@ crons = ["*/5 * * * *"]`;
                             type={isMobile ? "text" : "link"}
                             size="small"
                             aria-label={getRes().runtimeScheduler.edit}
-                            icon={<EditOutlined />}
+                            icon={<EditIcon />}
                             onClick={() => openEdit(record)}
                         >
                             {!isMobile && getRes().runtimeScheduler.edit}
@@ -544,14 +551,14 @@ crons = ["*/5 * * * *"]`;
                     </Tooltip>
                     {record.deletable === false || record.system ? (
                         <Tooltip title={getRes().runtimeScheduler.delete}>
-                            <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteOutlined />} disabled>
+                            <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteIcon />} disabled>
                                 {!isMobile && getRes().runtimeScheduler.delete}
                             </Button>
                         </Tooltip>
                     ) : (
                         <Popconfirm title={getRes().runtimeScheduler.confirmDelete} okText={getRes().runtimeScheduler.delete} okButtonProps={{danger: true}} cancelText={getRes().common.cancel} onConfirm={() => deleteAutomation(record.id)}>
                             <Tooltip title={getRes().runtimeScheduler.delete}>
-                                <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteOutlined />}>
+                                <Button danger type={isMobile ? "text" : "link"} size="small" aria-label={getRes().runtimeScheduler.delete} icon={<DeleteIcon />}>
                                     {!isMobile && getRes().runtimeScheduler.delete}
                                 </Button>
                             </Tooltip>
@@ -595,13 +602,13 @@ crons = ["*/5 * * * *"]`;
             <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
                 <Space>
                     <Text strong>{getRes().runtimeScheduler.tasks}</Text>
-                    <Button type="link" size="small" icon={<PlusOutlined />} disabled={scheduledCapabilities.length === 0} onClick={openCreate}>{getRes().runtimeScheduler.create}</Button>
+                    <Button type="link" size="small" icon={<AddIcon />} disabled={scheduledCapabilities.length === 0} onClick={openCreate}>{getRes().runtimeScheduler.create}</Button>
                 </Space>
                 <Space wrap style={isMobile ? {width: "100%"} : undefined}>
                     <Tooltip title={getRes().runtimeScheduler.tickTip}>
-                        <Button icon={<PlayCircleOutlined />} loading={ticking} onClick={triggerTick} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.checkDue}</Button>
+                        <Button icon={<BoltIcon />} loading={ticking} onClick={triggerTick} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.checkDue}</Button>
                     </Tooltip>
-                    <Button type="primary" icon={<CodeOutlined />} onClick={openExternalDrawer} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.externalTrigger}</Button>
+                    <Button type="primary" icon={<CodeIcon />} onClick={openExternalDrawer} style={isMobile ? {flex: 1} : undefined}>{getRes().runtimeScheduler.externalTrigger}</Button>
                 </Space>
             </div>
             <Table<Automation>
@@ -631,7 +638,7 @@ crons = ["*/5 * * * *"]`;
                 onClose={() => setExternalDrawerOpen(false)}
                 destroyOnClose
                 loading={settingsLoading}
-                extra={<Button icon={<SaveOutlined />} type="primary" loading={savingSettings} disabled={settingsLoading || !settingsLoaded} onClick={saveSchedulerSettings}>{getRes().runtimeScheduler.save}</Button>}
+                extra={<Button icon={<SaveIcon />} type="primary" loading={savingSettings} disabled={settingsLoading || !settingsLoaded} onClick={saveSchedulerSettings}>{getRes().runtimeScheduler.save}</Button>}
             >
                 <Space direction="vertical" size={16} style={{width: "100%"}}>
                     <Text type="secondary">{getRes().runtimeScheduler.externalHelp}</Text>
@@ -651,14 +658,14 @@ crons = ["*/5 * * * *"]`;
                             </Space>
                             <Input
                                 readOnly
-                                addonBefore={<Tooltip title="Authorization Bearer token"><KeyOutlined /> Bearer token</Tooltip>}
+                                addonBefore={<Tooltip title="Authorization Bearer token"><KeyIcon /> Bearer token</Tooltip>}
                                 value={provider.secret}
                                 addonAfter={(
                                     <Tooltip title={getRes().runtimeScheduler.copyToken}>
                                         <Button
                                             type="text"
                                             size="small"
-                                            icon={<CopyOutlined />}
+                                            icon={<CopyIcon />}
                                             onClick={() => copyText(provider.secret)}
                                             style={{
                                                 width: 22,
@@ -685,7 +692,7 @@ crons = ["*/5 * * * *"]`;
                                     <Space direction="vertical" size={12} style={{width: "100%"}}>
                                         <Text type="secondary">{getRes().runtimeScheduler.curlHelp}</Text>
                                         <Input.TextArea readOnly autoSize value={curlCommand(helpProvider?.secret || "")} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(curlCommand(helpProvider?.secret || ""))}>{getRes().runtimeScheduler.copyCurl}</Button>
+                                        <Button icon={<CopyIcon />} onClick={() => copyText(curlCommand(helpProvider?.secret || ""))}>{getRes().runtimeScheduler.copyCurl}</Button>
                                     </Space>
                                 )
                             },
@@ -697,10 +704,10 @@ crons = ["*/5 * * * *"]`;
                                         <Text type="secondary">{getRes().runtimeScheduler.workerHelp}</Text>
                                         <Text strong>src/index.js</Text>
                                         <Input.TextArea readOnly autoSize value={workerCode()} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(workerCode())}>{getRes().runtimeScheduler.copyWorker}</Button>
+                                        <Button icon={<CopyIcon />} onClick={() => copyText(workerCode())}>{getRes().runtimeScheduler.copyWorker}</Button>
                                         <Text strong>wrangler.toml</Text>
                                         <Input.TextArea readOnly autoSize value={wranglerConfig()} />
-                                        <Button icon={<CopyOutlined />} onClick={() => copyText(wranglerConfig())}>{getRes().runtimeScheduler.copyWrangler}</Button>
+                                        <Button icon={<CopyIcon />} onClick={() => copyText(wranglerConfig())}>{getRes().runtimeScheduler.copyWrangler}</Button>
                                         <Text type="secondary">{getRes().runtimeScheduler.secretCommand}</Text>
                                     </Space>
                                 )

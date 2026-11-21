@@ -1,5 +1,7 @@
 package com.zrlog.plugincore.server.util;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.hibegin.http.server.api.HttpRequest;
 import com.zrlog.plugin.data.codec.HttpRequestInfo;
 import org.junit.Test;
@@ -13,8 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 public class HttpMsgUtilTest {
 
@@ -79,5 +83,10 @@ public class HttpMsgUtilTest {
         assertSame(body, requestInfo.getRequestBody());
         assertEquals("desk", requestInfo.getHeader().get(AdminTheme.ADMIN_THEME_HEADER));
         assertEquals("true", requestInfo.getHeader().get(AdminTheme.ADMIN_COMPACT_MODE_HEADER));
+        JsonObject wireRequest = new Gson().toJsonTree(requestInfo).getAsJsonObject();
+        assertFalse(wireRequest.get("darkMode").getAsBoolean());
+        assertEquals("#1677ff", wireRequest.get("adminColorPrimary").getAsString());
+        assertEquals("desk", wireRequest.get("adminTheme").getAsString());
+        assertTrue(wireRequest.get("adminCompactMode").getAsBoolean());
     }
 }

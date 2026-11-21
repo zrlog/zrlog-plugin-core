@@ -21,18 +21,16 @@ import {
   theme,
 } from "antd";
 import type { TableColumnsType } from "antd";
-import {
-  ApiOutlined,
-  AppstoreOutlined,
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  FieldTimeOutlined,
-  LockOutlined,
-  SafetyCertificateOutlined,
-  SearchOutlined,
-  SettingOutlined,
-  UnorderedListOutlined,
-} from "@ant-design/icons";
+import ApiIcon from "@zrlog/ui/icons/api";
+import AppsIcon from "@zrlog/ui/icons/apps";
+import CloudDownloadIcon from "@zrlog/ui/icons/cloud-download";
+import DeleteIcon from "@zrlog/ui/icons/delete";
+import LockIcon from "@zrlog/ui/icons/lock";
+import SearchIcon from "@zrlog/ui/icons/search";
+import SecurityIcon from "@zrlog/ui/icons/security";
+import SettingsIcon from "@zrlog/ui/icons/settings";
+import TimeIcon from "@zrlog/ui/icons/time";
+import UnorderedListIcon from "@zrlog/ui/icons/unordered-list";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import type { Plugin, PluginCoreInfoResponse } from "../index";
@@ -125,7 +123,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
       shape="square"
       size="large"
       src={plugin.previewImageBase64 || undefined}
-      icon={<ApiOutlined />}
+      icon={<ApiIcon />}
       style={{
         flexShrink: 0,
         borderRadius: token.borderRadiusLG,
@@ -147,14 +145,14 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
   );
   const renderSystemTag = (plugin: Plugin) =>
     isRequired(plugin.shortName) && (
-      <Tag icon={<SafetyCertificateOutlined />}>{getRes().common.system}</Tag>
+      <Tag icon={<SecurityIcon />}>{getRes().common.system}</Tag>
     );
   const renderActions = (plugin: Plugin) => (
     <Space size="small" wrap>
       <Button
         type="link"
         href={plugin.shortName + "/"}
-        icon={<SettingOutlined />}
+        icon={<SettingsIcon />}
       >{getRes().plugins.manage}</Button>
       {isRequired(plugin.shortName) ? (
         <Tooltip title={getRes().plugins.requiredTip}>
@@ -162,7 +160,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
             <Button
               type="text"
               disabled
-              icon={<LockOutlined />}
+              icon={<LockIcon />}
               aria-label={getRes().plugins.requiredLabel}
             />
           </span>
@@ -179,7 +177,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
           <Button
             type="text"
             danger
-            icon={<DeleteOutlined />}
+            icon={<DeleteIcon />}
             aria-label={formatText(getRes().plugins.uninstallLabel, {name: pluginNameText(plugin)})}
           />
         </Popconfirm>
@@ -286,13 +284,13 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
           </Space>
           <Space wrap>
             <Button
-              icon={<FieldTimeOutlined />}
+              icon={<TimeIcon />}
               onClick={() => navigate(runtimePath())}
             >{getRes().plugins.runtimeConsole}</Button>
             <Button
               type="primary"
               href={data.pluginCenter}
-              icon={<CloudDownloadOutlined />}
+              icon={<CloudDownloadIcon />}
             >{getRes().plugins.getMore}</Button>
           </Space>
         </div>
@@ -307,7 +305,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
           <Input
             className="plugin-list-search"
             allowClear
-            prefix={<SearchOutlined />}
+            prefix={<SearchIcon />}
             placeholder={getRes().plugins.searchPlaceholder}
             aria-label={getRes().plugins.searchLabel}
             value={searchText}
@@ -338,8 +336,8 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
               }
             }}
             options={[
-              { label: getRes().plugins.list, value: "list", icon: <UnorderedListOutlined /> },
-              { label: getRes().plugins.grid, value: "grid", icon: <AppstoreOutlined /> },
+              { label: getRes().plugins.list, value: "list", icon: <UnorderedListIcon /> },
+              { label: getRes().plugins.grid, value: "grid", icon: <AppsIcon /> },
             ]}
           />
         </div>
@@ -362,7 +360,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
               <Button
                 type="primary"
                 href={data.pluginCenter}
-                icon={<CloudDownloadOutlined />}
+                icon={<CloudDownloadIcon />}
               >{getRes().plugins.getMore}</Button>
             )}
           </Empty>

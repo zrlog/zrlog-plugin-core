@@ -1,7 +1,8 @@
 import {getRes} from "../../i18n/plugin";
 import React, {useEffect, useState} from "react";
 import {Button, Grid, Space, Table, Tag, Tooltip, Typography, message} from "antd";
-import {CheckOutlined, ReloadOutlined} from "@ant-design/icons";
+import CheckIcon from "@zrlog/ui/icons/check";
+import RefreshIcon from "@zrlog/ui/icons/refresh";
 import type {ColumnsType} from "antd/es/table";
 import axios from "axios";
 import {
@@ -152,12 +153,12 @@ const ServiceRuntimeTab: React.FC = () => {
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
                     <Tooltip title={getRes().common.setDefault}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckIcon />} aria-label={getRes().common.setDefault} disabled={record.confirmed} onClick={() => setDefaultProvider(record)}>
                             {!isMobile && getRes().common.setDefault}
                         </Button>
                     </Tooltip>
                     <Tooltip title={getRes().common.autoSelect}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.serviceName)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<RefreshIcon />} aria-label={getRes().common.autoSelect} onClick={() => restoreAutoProvider(record.serviceName)}>
                             {!isMobile && getRes().common.autoSelect}
                         </Button>
                     </Tooltip>
@@ -203,12 +204,12 @@ const ServiceRuntimeTab: React.FC = () => {
             render: (_, record) => (
                 <Space size={isMobile ? 2 : "small"}>
                     <Tooltip title={getRes().runtimeServices.setCurrent}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckOutlined />} aria-label={getRes().runtimeServices.setCurrent} disabled={record.confirmed} onClick={() => setCommentProvider(record)}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<CheckIcon />} aria-label={getRes().runtimeServices.setCurrent} disabled={record.confirmed} onClick={() => setCommentProvider(record)}>
                             {!isMobile && getRes().runtimeServices.setCurrent}
                         </Button>
                     </Tooltip>
                     <Tooltip title={getRes().runtimeServices.restoreDefault}>
-                        <Button type={isMobile ? "text" : "link"} size="small" icon={<ReloadOutlined />} aria-label={getRes().runtimeServices.restoreDefault} onClick={restoreDefaultCommentProvider}>
+                        <Button type={isMobile ? "text" : "link"} size="small" icon={<RefreshIcon />} aria-label={getRes().runtimeServices.restoreDefault} onClick={restoreDefaultCommentProvider}>
                             {!isMobile && getRes().runtimeServices.restoreDefault}
                         </Button>
                     </Tooltip>

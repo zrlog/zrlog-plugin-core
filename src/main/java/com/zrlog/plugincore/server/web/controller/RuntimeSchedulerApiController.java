@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.hibegin.common.dao.dto.PageData;
 import com.hibegin.http.HttpMethod;
 import com.hibegin.http.annotation.ResponseBody;
+import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
 import com.zrlog.plugin.message.PluginCapability;
 import com.zrlog.plugincore.server.dao.PluginCoreDAO;
 import com.zrlog.plugincore.server.model.PluginCore;
@@ -23,6 +24,7 @@ import com.zrlog.plugincore.server.runtime.scheduler.SchedulerExternalEndpoint;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerProviderSetting;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerSetting;
 import com.zrlog.plugincore.server.runtime.scheduler.SchedulerTickResult;
+import com.zrlog.plugincore.server.util.AdminTheme;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -177,13 +179,14 @@ public class RuntimeSchedulerApiController extends RuntimeBaseApiController {
         view.setUri(path); view.setParam(request.decodeParamMap());
         Map<String, String> headers = new java.util.LinkedHashMap<>();
         for (String key : List.of("User-Agent", "Blog-Version", "Current-Locale", "AccessUrl", "Full-Url",
-                "Dark-Mode", "Admin-Theme", "Admin-Compact-Mode", "Admin-Color-Primary")) {
+                BaseHttpRequestInfo.DARK_MODE_HEADER, BaseHttpRequestInfo.ADMIN_THEME_HEADER,
+                BaseHttpRequestInfo.ADMIN_COMPACT_MODE_HEADER, BaseHttpRequestInfo.ADMIN_COLOR_PRIMARY_HEADER)) {
             String value = request.getHeader("User-Agent".equals(key) ? "X-ZrLog-View-User-Agent" : key);
             if (value != null) headers.put(key, value);
         }
         headers.put("IsLogin", "false"); view.setHeader(headers);
         view.setFullUrl(headers.get("Full-Url")); view.setAccessUrl(headers.get("AccessUrl")); view.setVersion(headers.get("Blog-Version"));
-        com.zrlog.plugincore.server.util.AdminTheme.fromHeaders(headers, null).applyTo(view);
+        AdminTheme.fromHeaders(headers).applyTo(view);
         var store = new WebsiteRuntimeKvStore();
         var states = new com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateService(
                 new com.zrlog.plugincore.server.runtime.state.PluginRuntimeStateStore(store),

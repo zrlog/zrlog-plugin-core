@@ -1,5 +1,6 @@
 package com.zrlog.plugincore.server.util;
 
+import com.hibegin.common.dao.DAO;
 import com.zrlog.plugin.common.model.PublicInfo;
 import com.zrlog.plugin.data.codec.BaseHttpRequestInfo;
 import com.zrlog.plugincore.server.support.InMemoryPluginCoreDatabase;
@@ -46,15 +47,17 @@ public class AdminThemeTest {
     @Test
     public void shouldPutMissingCanonicalHeadersForForwardRequest() {
         PublicInfo publicInfo = publicInfo(true, "#722ed1");
-        Map<String, String> headers = new HashMap<>();
-        headers.put("Dark_mode", "false");
+        Map<String, String> headers = Map.of("Dark_mode", "false", "Current-Locale", "en_US");
+        BaseHttpRequestInfo requestInfo = new BaseHttpRequestInfo();
+        requestInfo.setHeader(headers);
 
         AdminTheme theme = AdminTheme.fromHeaders(headers, publicInfo);
-        theme.putMissingHeaders(headers);
+        theme.applyTo(requestInfo);
 
         assertFalse(theme.isDarkMode());
-        assertEquals("false", headers.get(AdminTheme.DARK_MODE_HEADER));
-        assertEquals("#722ed1", headers.get(AdminTheme.ADMIN_COLOR_PRIMARY_HEADER));
+        assertEquals("false", requestInfo.getHeader().get(AdminTheme.DARK_MODE_HEADER));
+        assertEquals("#722ed1", requestInfo.getHeader().get(AdminTheme.ADMIN_COLOR_PRIMARY_HEADER));
+        assertEquals("en_US", requestInfo.getHeader().get("Current-Locale"));
     }
 
     @Test
@@ -67,6 +70,8 @@ public class AdminThemeTest {
         assertTrue(requestInfo.isDarkMode());
         assertEquals(Boolean.TRUE, requestInfo.getDarkMode());
         assertEquals("#13c2c2", requestInfo.getAdminColorPrimary());
+        assertEquals("geek", requestInfo.getAdminTheme());
+        assertTrue(requestInfo.isAdminCompactMode());
         assertEquals("true", requestInfo.getHeader().get(BaseHttpRequestInfo.DARK_MODE_HEADER));
         assertEquals("#13c2c2", requestInfo.getHeader().get(BaseHttpRequestInfo.ADMIN_COLOR_PRIMARY_HEADER));
         assertEquals("geek", requestInfo.getHeader().get(AdminTheme.ADMIN_THEME_HEADER));
@@ -76,15 +81,19 @@ public class AdminThemeTest {
     @Test
     public void shouldMergeCaseInsensitiveHeadersWithSiteAppearanceAndPreserveFalse() {
         Map<String, String> headers = new HashMap<>();
-        headers.put("admin-theme", "antd");
-        headers.put("ADMIN-COMPACT-MODE", "false");
+        headers.put(AdminTheme.ADMIN_THEME_HEADER, " ");
+        headers.put("admin-theme", " antd ");
+        headers.put(AdminTheme.ADMIN_COMPACT_MODE_HEADER, " FALSE ");
+        headers.put(AdminTheme.DARK_MODE_HEADER, "invalid");
+        BaseHttpRequestInfo requestInfo = new BaseHttpRequestInfo();
+        requestInfo.setHeader(headers);
         AdminTheme theme = AdminTheme.fromHeadersWithFallback(headers, new AdminTheme(true, "#722ed1", "desk", true));
 
-        theme.putMissingHeaders(headers);
+        theme.applyTo(requestInfo);
 
-        assertEquals("antd", headers.get(AdminTheme.ADMIN_THEME_HEADER));
-        assertEquals("false", headers.get(AdminTheme.ADMIN_COMPACT_MODE_HEADER));
-        assertEquals("true", headers.get(AdminTheme.DARK_MODE_HEADER));
+        assertEquals("antd", requestInfo.getHeader().get(AdminTheme.ADMIN_THEME_HEADER));
+        assertEquals("false", requestInfo.getHeader().get(AdminTheme.ADMIN_COMPACT_MODE_HEADER));
+        assertEquals("true", requestInfo.getHeader().get(AdminTheme.DARK_MODE_HEADER));
         assertEquals("#722ed1", theme.getAdminColorPrimary());
         AdminTheme fallback = AdminTheme.fromHeadersWithFallback(Map.of(AdminTheme.ADMIN_THEME_HEADER, "  "),
                 new AdminTheme(false, "#1677ff", "desk", true));
@@ -100,6 +109,27 @@ public class AdminThemeTest {
 
         assertFalse(theme.isDarkMode());
         assertEquals(PublicInfoLoader.DEFAULT_ADMIN_COLOR_PRIMARY, theme.getAdminColorPrimary());
+    }
+
+    @Test
+    public void shouldUseDefaultAppearanceWhenDataSourceIsUnavailable() {
+        var previousDataSource = DAO.getDefaultDataSource();
+        DAO.setDs(null);
+        try {
+            AdminTheme appearance = AdminTheme.fromRequest(null);
+            assertEquals("default", appearance.getTheme());
+            assertFalse(appearance.isDarkMode());
+            assertEquals("#1677ff", appearance.getAdminColorPrimary());
+            assertFalse(appearance.isCompactMode());
+
+            AdminTheme partial = AdminTheme.fromHeaders(Map.of("dark_mode", "true", "Admin-Theme", "desk"));
+            assertEquals("desk", partial.getTheme());
+            assertTrue(partial.isDarkMode());
+            assertEquals("#1677ff", partial.getAdminColorPrimary());
+            assertFalse(partial.isCompactMode());
+        } finally {
+            DAO.setDs(previousDataSource);
+        }
     }
 
     private PublicInfo publicInfo(boolean darkMode, String adminColorPrimary) {
@@ -123,6 +153,12 @@ public class AdminThemeTest {
             assertTrue(appearance.isDarkMode());
             assertEquals("#00875a", appearance.getAdminColorPrimary());
             assertTrue(appearance.isCompactMode());
+
+            AdminTheme partial = AdminTheme.fromHeaders(Map.of(AdminTheme.ADMIN_COMPACT_MODE_HEADER, "false"));
+            assertEquals("desk", partial.getTheme());
+            assertTrue(partial.isDarkMode());
+            assertEquals("#00875a", partial.getAdminColorPrimary());
+            assertFalse(partial.isCompactMode());
         }
     }
 }
