@@ -45,7 +45,7 @@ jobs:
       - name: Build binary
         id: package
         run: |
-          ZRLOG_PACKAGE_TYPE=faas bash -e bin/package-native-github.sh /tmp/download/plugin/core/faas -Dmysql-scope='provided'
+          ZRLOG_PACKAGE_TYPE=faas bash .zrlog-build/scripts/plugin/core/package-native.sh /tmp/download/plugin/core/faas -Dmysql-scope=provided
       - name: Process Linux binary
         uses: zrlog/zrlog-build@5b539f9a93403c981b9e36554ffb8d3d3e7e8b33 # v1.0.1
         with:

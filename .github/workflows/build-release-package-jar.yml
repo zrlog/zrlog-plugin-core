@@ -38,7 +38,7 @@ jobs:
           java-version: '11'
           cache: 'maven'
       - name: Build with Maven
-        run: bash bin/compile-jar.sh -DoutputDirectory=/tmp/download/plugin/core
+        run: bash .zrlog-build/scripts/plugin/core/package-jar.sh -DoutputDirectory=/tmp/download/plugin/core
       - name: Upload JAR
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.SECRET_ID }}
