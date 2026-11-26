@@ -104,7 +104,7 @@ public class PluginApiController extends Controller {
         response.setPluginBuildId(String.valueOf(ConfigKit.get("buildId", "")));
         response.setPluginBuildNumber(String.valueOf(ConfigKit.get("buildNumber", "")));
         response.setRequiredPlugins(pluginBootstrap().getRequiredPlugins().keySet());
-        response.setPluginCenter("https://store.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
+        response.setPluginCenter("https://www.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
         return response;
     }
 

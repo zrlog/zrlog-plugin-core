@@ -379,7 +379,7 @@ final class NativeRuntimeWarmup {
         pluginListResponse.setPluginBuildId("native-build");
         pluginListResponse.setPluginBuildNumber("1");
         pluginListResponse.setRequiredPlugins(Collections.singleton("comment"));
-        pluginListResponse.setPluginCenter("https://store.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
+        pluginListResponse.setPluginCenter("https://www.zrlog.com/plugin/index.html?upgrade-v3=true&from=#locationHref");
 
         PluginApiModels.RefreshCacheResponse refreshCacheResponse = new PluginApiModels.RefreshCacheResponse();
         refreshCacheResponse.setCode(0);

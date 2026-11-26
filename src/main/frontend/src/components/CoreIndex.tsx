@@ -148,7 +148,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
       <Tag icon={<SecurityIcon />}>{getRes().common.system}</Tag>
     );
   const renderActions = (plugin: Plugin) => (
-    <Space size="small" wrap>
+    <Space size="small">
       <Button
         type="link"
         href={plugin.shortName + "/"}
@@ -231,7 +231,7 @@ const CoreIndex: React.FC<CoreIndexProps> = ({ data, onRefresh }) => {
       title: getRes().common.actions,
       key: "actions",
       responsive: ["lg"],
-      width: 160,
+      width: "1%",
       render: (_, plugin) => renderActions(plugin),
     },
   ];
